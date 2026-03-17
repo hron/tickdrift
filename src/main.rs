@@ -62,31 +62,40 @@ impl Render for TodoApp {
             .size_full()
             .bg(rgb(0xffffff))
             .p(px(16.0))
-            .child(div().flex().flex_col().gap(px(8.0)).children(
-                self.todos.iter().enumerate().map(|(i, todo)| {
-                    let is_selected = i == selected_index;
-                    div()
-                        .p(px(8.0))
-                        .border(px(1.0))
-                        .rounded(px(4.0))
-                        .border_color(if is_selected {
-                            rgb(0x0066cc)
-                        } else {
-                            rgb(0xcccccc)
-                        })
-                        .bg(if is_selected {
-                            rgb(0x0066cc)
-                        } else {
-                            rgb(0xffffff)
-                        })
-                        .text_color(if is_selected {
-                            rgb(0xffffff)
-                        } else {
-                            rgb(0x000000)
-                        })
-                        .child(todo.title.clone())
-                }),
-            ))
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .children(self.todos.iter().enumerate().map(|(i, todo)| {
+                        let is_selected = i == selected_index;
+                        let mut item = div()
+                            .flex()
+                            .items_center()
+                            .h(px(36.0))
+                            .ml(px(8.0))
+                            .mr(px(8.0))
+                            .border_b(px(1.0))
+                            .border_color(rgb(0xe0e0e0))
+                            .child(
+                                div()
+                                    .w(px(20.0))
+                                    .h(px(20.0))
+                                    .border(px(2.0))
+                                    .border_color(rgb(0xdddddd))
+                                    .rounded(px(10.0))
+                                    .mr(px(12.0)),
+                            )
+                            .child(div().flex_1().child(todo.title.clone()));
+                        if is_selected {
+                            item = item
+                                .border(px(2.0))
+                                .border_color(rgb(0x0066cc))
+                                .rounded(px(4.0))
+                                .bg(rgb(0xf0f7ff));
+                        }
+                        item
+                    })),
+            )
     }
 }
 
