@@ -36,6 +36,7 @@ impl TodoApp {
     }
 }
 
+#[derive(Clone)]
 struct Todo {
     title: SharedString,
     completed: bool,
@@ -137,4 +138,35 @@ fn main() {
         })
         .unwrap();
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[gpui::test]
+    async fn test_keyboard_navigation(cx: &mut gpui::TestAppContext) {
+        let todos = vec![
+            Todo::new("Learn Rust", false),
+            Todo::new("Build a todo app", true),
+            Todo::new("Add CRUD operations", false),
+        ];
+
+        let app = cx.add_window(|_window, cx| {
+            let focus_handle = cx.focus_handle();
+            TodoApp {
+                todos,
+                selected_index: 0,
+                focus_handle,
+            }
+        });
+
+        _ = app.update(cx, |app, window, cx| {
+            assert_eq!(app.selected_index, 0);
+            app.move_down(&MoveDown, window, cx);
+            assert_eq!(app.selected_index, 1);
+            app.move_up(&MoveUp, window, cx);
+            assert_eq!(app.selected_index, 0);
+        });
+    }
 }
