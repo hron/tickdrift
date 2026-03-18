@@ -1,7 +1,7 @@
 use gpui::{
-    actions, div, px, rgb, size, App, AppContext, Context, FocusHandle, Focusable,
-    InteractiveElement, ParentElement, Render, SharedString, Styled, TitlebarOptions, Window,
-    WindowOptions,
+    App, AppContext, Context, FocusHandle, Focusable, Font, InteractiveElement, ParentElement,
+    Render, SharedString, Styled, TitlebarOptions, Window, WindowOptions, actions, div, px, rgb,
+    size,
 };
 
 actions!(todo_app, [MoveUp, MoveDown]);
@@ -55,13 +55,20 @@ impl Render for TodoApp {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl gpui::IntoElement {
         let selected_index = self.selected_index;
 
+        let theme_background = rgb(0xfdfdfd);
+        let theme_task_bottom_border = rgb(0xececec);
+        let theme_circle_color = rgb(0x999999);
+        let theme_focus_task_border = rgb(0xa0bbe5);
+        let theme_focus_task_background = rgb(0xf9f9f9);
+
         div()
             .key_context("TodoApp")
             .track_focus(&self.focus_handle(cx))
             .on_action(cx.listener(TodoApp::move_up))
             .on_action(cx.listener(TodoApp::move_down))
             .size_full()
-            .bg(rgb(0xffffff))
+            .text_size(px(14.0))
+            .bg(theme_background)
             .p(px(16.0))
             .child(
                 div()
@@ -69,32 +76,44 @@ impl Render for TodoApp {
                     .flex_col()
                     .children(self.todos.iter().enumerate().map(|(i, todo)| {
                         let is_selected = i == selected_index;
-                        let mut item = div()
+                        div()
                             .flex()
                             .items_center()
-                            .h(px(36.0))
-                            .ml(px(8.0))
+                            .pl_neg_1()
+                            .pr_neg_1()
                             .mr(px(8.0))
                             .border_b(px(1.0))
-                            .border_color(rgb(0xe0e0e0))
+                            .border_color(theme_task_bottom_border)
                             .child(
                                 div()
-                                    .w(px(20.0))
-                                    .h(px(20.0))
-                                    .border(px(2.0))
-                                    .border_color(rgb(0xdddddd))
-                                    .rounded(px(10.0))
-                                    .mr(px(12.0)),
+                                    // .content_center()
+                                    .flex()
+                                    .flex_1()
+                                    .border_1()
+                                    .rounded(px(4.0))
+                                    .border_color(if (is_selected) {
+                                        theme_focus_task_border
+                                    } else {
+                                        theme_background
+                                    })
+                                    .bg(if is_selected {
+                                        theme_focus_task_background
+                                    } else {
+                                        theme_background
+                                    })
+                                    .p(px(12.0))
+                                    .child(
+                                        div()
+                                            .flex_none()
+                                            .w(px(20.0))
+                                            .h(px(20.0))
+                                            .border(px(1.0))
+                                            .border_color(theme_circle_color)
+                                            .rounded(px(10.0))
+                                            .mr(px(12.0)),
+                                    )
+                                    .child(div().flex_1().child(todo.title.clone())),
                             )
-                            .child(div().flex_1().child(todo.title.clone()));
-                        if is_selected {
-                            item = item
-                                .border(px(2.0))
-                                .border_color(rgb(0x0066cc))
-                                .rounded(px(4.0))
-                                .bg(rgb(0xf0f7ff));
-                        }
-                        item
                     })),
             )
     }
