@@ -29,7 +29,7 @@ Create a Rust desktop todo app using gpui (the UI framework from Zed). The app s
 ## Project Structure
 
 ```
-/home/algus/src/todoz/
+todoz/
 ├── Cargo.toml              # gpui dependency configured
 ├── src/
 │   └── main.rs            # Main application code with todo list and keyboard navigation
