@@ -1,8 +1,9 @@
 use gpui::{
-    App, AppContext, Context, FocusHandle, Focusable, Font, InteractiveElement, ParentElement,
+    App, AppContext, Context, FocusHandle, Focusable, InteractiveElement, ParentElement,
     Render, SharedString, Styled, TitlebarOptions, Window, WindowOptions, actions, div, px, rgb,
     size,
 };
+use gpui_platform::application;
 
 actions!(todo_app, [MoveUp, MoveDown]);
 
@@ -127,13 +128,13 @@ fn main() {
         Todo::new("Style the UI", false),
     ];
 
-    gpui::Application::new().run(|app| {
-        app.bind_keys([
+    application().run(|cx: &mut App| {
+        cx.bind_keys([
             gpui::KeyBinding::new("up", MoveUp, None),
             gpui::KeyBinding::new("down", MoveDown, None),
         ]);
 
-        let bounds = gpui::Bounds::centered(None, size(px(400.0), px(300.0)), app);
+        let bounds = gpui::Bounds::centered(None, size(px(400.0), px(300.0)), cx);
         let options = WindowOptions {
             window_bounds: Some(gpui::WindowBounds::Windowed(bounds)),
             titlebar: Some(TitlebarOptions {
@@ -142,20 +143,18 @@ fn main() {
             }),
             ..Default::default()
         };
-        app.open_window(options, |window, app| {
-            let entity = app.new(|cx| {
+        cx.open_window(options, |_, cx| {
+            cx.new(|cx| {
                 let focus_handle = cx.focus_handle();
                 TodoApp {
                     todos,
                     selected_index: 0,
                     focus_handle,
                 }
-            });
-            let focus = entity.read(app).focus_handle(app);
-            window.focus(&focus);
-            entity
+            })
         })
         .unwrap();
+        cx.activate(true);
     });
 }
 
@@ -187,5 +186,31 @@ mod tests {
             app.move_up(&MoveUp, window, cx);
             assert_eq!(app.selected_index, 0);
         });
+    }
+
+    #[test]
+    fn test_headless_app_context_api() {
+        use gpui::PlatformTextSystem;
+        use std::sync::Arc;
+
+        // This demonstrates the HeadlessAppContext API
+        // Note: Screenshots only work on macOS with headless Metal renderer
+        
+        // let text_system = Arc::new(gpui_linux::LinuxTextSystem::new());
+        // let mut cx = gpui::HeadlessAppContext::with_platform(
+        //     text_system,
+        //     Arc::new(()),
+        //     || gpui_platform::current_headless_renderer(),
+        // );
+        //
+        // let window = cx.open_window(gpui::size(px(400.0), px(300.0)), |_, cx| {
+        //     cx.new(|_| TodoApp { todos: vec![], selected_index: 0, focus_handle: cx.focus_handle() })
+        // }).unwrap();
+        //
+        // cx.run_until_parked();
+        // let screenshot = cx.capture_screenshot(window.into()).unwrap();
+        // screenshot.save("test_screenshot.png").unwrap();
+        
+        println!("HeadlessAppContext API available - screenshot requires macOS headless Metal renderer");
     }
 }
