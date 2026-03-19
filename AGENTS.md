@@ -9,6 +9,7 @@ Create a Rust desktop todo app using gpui (the UI framework from Zed). The app s
 - Use gpui from Zed's git repository (latest version with HeadlessAppContext support)
 - Start with hardcoded todos
 - Build incrementally: list view → keyboard navigation → CRUD
+- **Always commit `Cargo.lock`** to ensure reproducible builds
 
 ## Dependencies
 
