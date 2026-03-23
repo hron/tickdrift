@@ -10,6 +10,7 @@ Create a Rust desktop todo app using gpui (the UI framework from Zed). The app s
 - Start with hardcoded todos
 - Build incrementally: list view → keyboard navigation → CRUD
 - **Always commit `Cargo.lock`** to ensure reproducible builds
+- **After any UI change: run the sway verification workflow (see UI Verification section) before considering the task done. Do NOT rely on `cargo build` success alone.**
 
 ## Dependencies
 
@@ -33,6 +34,7 @@ gpui-platform = { git = "https://github.com/zed-industries/zed.git", package = "
   - Binding keys with `cx.bind_keys([KeyBinding::new("up", MoveUp, None), ...])`
   - Using `.track_focus(&focus_handle(cx))` and `.on_action(cx.listener(...))` on the root element
   - Calling `cx.activate(true)` to activate the app
+  - **Calling `window.focus(&focus_handle, cx)` inside `open_window` so keys work immediately without a mouse click**
 
 ## Testing
 
@@ -52,99 +54,115 @@ async fn test_keyboard_navigation(cx: &mut gpui::TestAppContext) {
 }
 ```
 
-### Headless App Context (for screenshots)
+## UI Verification (MANDATORY after any UI change)
 
-The latest gpui has `HeadlessAppContext` with `capture_screenshot()`:
+After every change that affects rendering, layout, or colors, verify visually using
+the headless sway workflow. Do NOT skip this. Do NOT rely on `cargo build` alone.
 
-```rust
-use gpui::HeadlessAppContext;
-use gpui_platform::current_headless_renderer;
-
-let mut cx = HeadlessAppContext::with_platform(
-    text_system,
-    Arc::new(()),
-    || current_headless_renderer(),
-);
-
-let window = cx.open_window(size(px(400.0), px(300.0)), |_, cx| {
-    cx.new(|_| MyApp { ... })
-}).unwrap();
-
-cx.run_until_parked();
-let screenshot = cx.capture_screenshot(window.into()).unwrap();
-screenshot.save("test.png").unwrap();
-```
-
-**Platform Support for Screenshots:**
-- macOS: ✓ Full support via Metal headless renderer
-- Linux: ✗ Headless renderer not yet implemented
-
-## UI Testing Strategy
-
-### Test Location
-
-Place UI tests in `src/main.rs` within `#[cfg(test)]` module.
-
-### Test Structure
-
-```rust
-#[cfg(test)]
-mod ui_tests {
-    use super::*;
-    use gpui::HeadlessAppContext;
-    use gpui_platform::current_headless_renderer;
-    use std::sync::Arc;
-    use image::RgbaImage;
-
-    fn create_test_context() -> HeadlessAppContext {
-        let text_system = Arc::new(gpui_linux::LinuxTextSystem::new());
-        HeadlessAppContext::with_platform(
-            text_system,
-            Arc::new(()),
-            || current_headless_renderer(),
-        )
-    }
-
-    fn assert_pixel_color(img: &RgbaImage, x: u32, y: u32, expected: (u8, u8, u8), tolerance: u8) {
-        let pixel = img.get_pixel(x, y);
-        for (actual, exp) in pixel.0[..3].iter().zip(expected.into_iter()) {
-            assert!((actual as i16 - *exp as i16).abs() <= tolerance as i16);
-        }
-    }
-}
-```
-
-### Test Categories
-
-1. **Color Verification** - Check specific pixels match expected colors
-2. **Layout Verification** - Verify element positions and sizes
-3. **State Transition Tests** - Trigger actions, verify visual changes
-
-### Example: Background Color Test
-
-```rust
-#[test]
-fn test_background_color() {
-    let mut cx = create_test_context();
-
-    let window = cx.open_window(
-        gpui::size(px(400.0), px(300.0)),
-        |_, cx| cx.new(|_| TodoApp { ... })
-    ).unwrap();
-
-    cx.run_until_parked();
-    let screenshot = cx.capture_screenshot(window.into()).unwrap();
-
-    // Background should be #fdfdfd
-    assert_pixel_color(&screenshot, 200, 150, (253, 253, 253), 5);
-}
-```
-
-### Running UI Tests
+### Step 1: Teardown any previous instances
 
 ```bash
-cargo test
+kill $(pgrep -f "target/debug/todoz") 2>/dev/null
+kill $(pgrep -x sway) 2>/dev/null
+sleep 1
 ```
+
+### Step 2: Start headless sway
+
+**Must use `WLR_RENDERER=vulkan`** — pixman causes a Mesa DRM fd failure and a fatal crash.
+
+```bash
+mkdir -p /tmp/ui-test
+WLR_BACKENDS=headless WLR_RENDERER=vulkan XDG_RUNTIME_DIR=/tmp/ui-test \
+  sway --config /dev/null > /tmp/ui-test/sway.log 2>&1 &
+sleep 2
+ls /tmp/ui-test/wayland-1   # socket must exist before continuing
+```
+
+### Step 3: Build and launch the app
+
+```bash
+cargo build
+XDG_RUNTIME_DIR=/tmp/ui-test WAYLAND_DISPLAY=wayland-1 \
+  ./target/debug/todoz > /tmp/ui-test/app.log 2>&1 &
+sleep 3
+```
+
+### Step 4: Capture a screenshot
+
+```bash
+XDG_RUNTIME_DIR=/tmp/ui-test WAYLAND_DISPLAY=wayland-1 \
+  grim /tmp/ui-test/screenshot.png
+```
+
+Read the screenshot file with the Read tool to visually inspect it.
+
+### Step 5: Assert pixel colors with Python/Pillow
+
+```python
+from PIL import Image
+
+img = Image.open('/tmp/ui-test/screenshot.png').convert('RGB')
+
+def assert_color(x, y, expected_hex, tolerance=10, label=""):
+    r, g, b = img.getpixel((x, y))
+    er = (expected_hex >> 16) & 0xff
+    eg = (expected_hex >> 8) & 0xff
+    eb = expected_hex & 0xff
+    assert abs(r - er) <= tolerance, f"{label} R mismatch at ({x},{y}): got {r}, expected {er}"
+    assert abs(g - eg) <= tolerance, f"{label} G mismatch at ({x},{y}): got {g}, expected {eg}"
+    assert abs(b - eb) <= tolerance, f"{label} B mismatch at ({x},{y}): got {b}, expected {eb}"
+    print(f"OK {label} ({x},{y}): #{r:02x}{g:02x}{b:02x}")
+
+print(f"Screenshot size: {img.size}")
+
+# Adapt coordinates based on window position and known layout:
+# - 16px outer padding, ~40px row height, 18px circle at row center
+assert_color(10, 10, 0x282828, label="background")
+# assert_color(x, y, 0x383838, label="selected row bg")
+# assert_color(x, y, 0x282828, label="normal row bg")
+```
+
+Adapt coordinates by reading `img.size` and reasoning about element positions
+from the known layout (16px padding, ~40px row height, etc.).
+
+### Step 6: Verify keyboard navigation
+
+**Note:** `wtype` sends virtual keyboard events into the headless sway session, but GPUI
+subscribes to `wl_keyboard` at startup when the headless seat has `capabilities=0` (no
+input devices). By the time `wtype` runs, GPUI has already missed the capability
+notification and will not receive key events.
+
+**Use the unit test instead** — keyboard navigation is fully covered by `cargo test`:
+
+```bash
+cargo test test_keyboard_navigation
+```
+
+This test calls `move_down`/`move_up` directly on the view and asserts `selected_index`
+changes correctly. It is the authoritative verification for navigation logic.
+
+### Step 7: Teardown
+
+```bash
+kill $(pgrep -f "target/debug/todoz") 2>/dev/null
+kill $(pgrep -x sway) 2>/dev/null
+```
+
+### Current theme colors to assert
+
+| Element | Color |
+|---|---|
+| App background | `#282828` |
+| Normal row background | `#282828` |
+| Selected row background | `#383838` |
+| Selected row border | `#4a9eff` |
+| Circle border (normal) | `#777777` |
+| Circle border (focused) | `#4a9eff` |
+| Text | `#f0f0f0` |
+| Row separator | `#3d3d3d` |
+
+**Keep this table up to date whenever theme colors change.**
 
 ## Project Structure
 
@@ -173,5 +191,3 @@ cargo test
 - Add new todo creation
 - Delete todos
 - Persist todos to storage
-- Add better styling
-- Implement headless screenshot for Linux (requires PlatformHeadlessRenderer implementation)
