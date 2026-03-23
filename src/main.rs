@@ -3,6 +3,7 @@ use gpui::{
     Render, SharedString, Styled, TitlebarOptions, Window, WindowOptions, actions, div, px, rgb,
     size,
 };
+use gpui::prelude::FluentBuilder;
 use gpui_platform::application;
 
 actions!(todo_app, [MoveUp, MoveDown]);
@@ -56,11 +57,14 @@ impl Render for TodoApp {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl gpui::IntoElement {
         let selected_index = self.selected_index;
 
-        let theme_background = rgb(0xfdfdfd);
-        let theme_task_bottom_border = rgb(0xececec);
-        let theme_circle_color = rgb(0x999999);
-        let theme_focus_task_border = rgb(0xa0bbe5);
-        let theme_focus_task_background = rgb(0xf9f9f9);
+        // Dark theme colors matching Todoist
+        let theme_background = rgb(0x282828);
+        let theme_text = rgb(0xf0f0f0);
+        let theme_separator = rgb(0x3d3d3d);
+        let theme_circle_normal = rgb(0x777777);
+        let theme_circle_focused = rgb(0x4a9eff);
+        let theme_focus_border = rgb(0x4a9eff);
+        let theme_focus_background = rgb(0x383838);
 
         div()
             .key_context("TodoApp")
@@ -69,6 +73,7 @@ impl Render for TodoApp {
             .on_action(cx.listener(TodoApp::move_down))
             .size_full()
             .text_size(px(14.0))
+            .text_color(theme_text)
             .bg(theme_background)
             .p(px(16.0))
             .child(
@@ -77,43 +82,50 @@ impl Render for TodoApp {
                     .flex_col()
                     .children(self.todos.iter().enumerate().map(|(i, todo)| {
                         let is_selected = i == selected_index;
+                        let circle_color = if is_selected {
+                            theme_circle_focused
+                        } else {
+                            theme_circle_normal
+                        };
+
+                        // Outer row: provides the bottom separator line
                         div()
                             .flex()
-                            .items_center()
-                            .pl_neg_1()
-                            .pr_neg_1()
-                            .mr(px(8.0))
+                            .flex_col()
                             .border_b(px(1.0))
-                            .border_color(theme_task_bottom_border)
+                            .border_color(theme_separator)
+                            // Inner content row: contains the focus highlight + circle + text
                             .child(
                                 div()
-                                    // .content_center()
                                     .flex()
                                     .flex_1()
+                                    .items_center()
                                     .border_1()
-                                    .rounded(px(4.0))
-                                    .border_color(if (is_selected) {
-                                        theme_focus_task_border
-                                    } else {
-                                        theme_background
+                                    .rounded(px(6.0))
+                                    .when(is_selected, |el| {
+                                        el.border_color(theme_focus_border)
+                                            .bg(theme_focus_background)
                                     })
-                                    .bg(if is_selected {
-                                        theme_focus_task_background
-                                    } else {
-                                        theme_background
-                                    })
-                                    .p(px(12.0))
+                                    .px(px(8.0))
+                                    .py(px(10.0))
+                                    // Circle
                                     .child(
                                         div()
                                             .flex_none()
-                                            .w(px(20.0))
-                                            .h(px(20.0))
-                                            .border(px(1.0))
-                                            .border_color(theme_circle_color)
-                                            .rounded(px(10.0))
+                                            .w(px(18.0))
+                                            .h(px(18.0))
+                                            .border(px(1.5))
+                                            .border_color(circle_color)
+                                            .rounded_full()
                                             .mr(px(12.0)),
                                     )
-                                    .child(div().flex_1().child(todo.title.clone())),
+                                    // Text — flex_1 so it takes remaining space, self_center ensures vertical alignment
+                                    .child(
+                                        div()
+                                            .flex_1()
+                                            .line_height(gpui::relative(1.0))
+                                            .child(todo.title.clone()),
+                                    ),
                             )
                     })),
             )
@@ -122,10 +134,13 @@ impl Render for TodoApp {
 
 fn main() {
     let todos = vec![
-        Todo::new("Learn Rust", false),
-        Todo::new("Build a todo app with gpui", true),
-        Todo::new("Add CRUD operations", false),
-        Todo::new("Style the UI", false),
+        Todo::new("Setup a mechanism to test gpui with screenshots for AI and myself", false),
+        Todo::new("Refactor the codebase, extract colors and assign names", false),
+        Todo::new("Improve the styles of todo list in todoz", false),
+        Todo::new("Create git repo for todoz", false),
+        Todo::new("Add mouse on hover handling to the tasks list", false),
+        Todo::new("Implement (complete todo) keyboard shortcut", false),
+        Todo::new("Define next actions to create MVP todoz", false),
     ];
 
     application().run(|cx: &mut App| {
@@ -143,9 +158,10 @@ fn main() {
             }),
             ..Default::default()
         };
-        cx.open_window(options, |_, cx| {
+        cx.open_window(options, |window, cx| {
             cx.new(|cx| {
                 let focus_handle = cx.focus_handle();
+                window.focus(&focus_handle, cx);
                 TodoApp {
                     todos,
                     selected_index: 0,
