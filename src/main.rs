@@ -99,7 +99,7 @@ impl Render for TodoApp {
                                 div()
                                     .flex()
                                     .flex_1()
-                                    .items_center()
+                                    .items_start()
                                     .border_1()
                                     .rounded(px(6.0))
                                     .when(is_selected, |el| {
@@ -108,22 +108,24 @@ impl Render for TodoApp {
                                     })
                                     .px(px(8.0))
                                     .py(px(10.0))
-                                    // Circle
+                                    // Circle — flex_none so it never grows/shrinks, mt aligns it with the first text line
                                     .child(
                                         div()
                                             .flex_none()
                                             .w(px(18.0))
                                             .h(px(18.0))
+                                            .mt(px(1.0))
                                             .border(px(1.5))
                                             .border_color(circle_color)
                                             .rounded_full()
                                             .mr(px(12.0)),
                                     )
-                                    // Text — flex_1 so it takes remaining space, self_center ensures vertical alignment
+                                    // Text — w_full + min_w(0) gives definite width so text wraps
                                     .child(
                                         div()
-                                            .flex_1()
-                                            .line_height(gpui::relative(1.0))
+                                            .w_full()
+                                            .min_w(px(0.0))
+                                            .line_height(gpui::relative(1.4))
                                             .child(todo.title.clone()),
                                     ),
                             )
@@ -149,13 +151,14 @@ fn main() {
             gpui::KeyBinding::new("down", MoveDown, None),
         ]);
 
-        let bounds = gpui::Bounds::centered(None, size(px(400.0), px(300.0)), cx);
+        let bounds = gpui::Bounds::centered(None, size(px(400.0), px(600.0)), cx);
         let options = WindowOptions {
             window_bounds: Some(gpui::WindowBounds::Windowed(bounds)),
             titlebar: Some(TitlebarOptions {
                 title: Some("Todoz".into()),
                 ..Default::default()
             }),
+            app_id: Some("todoz".to_string()),
             ..Default::default()
         };
         cx.open_window(options, |window, cx| {

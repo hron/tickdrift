@@ -71,10 +71,19 @@ sleep 1
 
 **Must use `WLR_RENDERER=vulkan`** — pixman causes a Mesa DRM fd failure and a fatal crash.
 
+**Must use a sway config that enables floating windows** — otherwise sway tiles the window
+to fill the full 1280x720 framebuffer, ignoring the app's requested size.
+The app sets `app_id = "todoz"` in `WindowOptions` so sway can match it.
+
 ```bash
 mkdir -p /tmp/ui-test
+cat > /tmp/ui-test/sway.conf << 'EOF'
+floating_modifier Mod4
+for_window [app_id=".*"] floating enable
+for_window [title=".*"] floating enable
+EOF
 WLR_BACKENDS=headless WLR_RENDERER=vulkan XDG_RUNTIME_DIR=/tmp/ui-test \
-  sway --config /dev/null > /tmp/ui-test/sway.log 2>&1 &
+  sway --config /tmp/ui-test/sway.conf > /tmp/ui-test/sway.log 2>&1 &
 sleep 2
 ls /tmp/ui-test/wayland-1   # socket must exist before continuing
 ```
@@ -90,12 +99,42 @@ sleep 3
 
 ### Step 4: Capture a screenshot
 
+The wlroots headless framebuffer is always 1280x720 regardless of the logical output
+resolution. The app window is floating and rendered at its requested size (e.g. 400x600),
+centered in the framebuffer. Use Python/Pillow to auto-detect the window bounds and crop.
+
 ```bash
 XDG_RUNTIME_DIR=/tmp/ui-test WAYLAND_DISPLAY=wayland-1 \
-  grim /tmp/ui-test/screenshot.png
+  grim /tmp/ui-test/screenshot_full.png
 ```
 
-Read the screenshot file with the Read tool to visually inspect it.
+Then crop to the window bounds:
+
+```python
+from PIL import Image
+
+img = Image.open('/tmp/ui-test/screenshot_full.png').convert('RGB')
+print('full size:', img.size)
+
+# Auto-detect window bounds (non-black pixels)
+min_x, min_y, max_x, max_y = 9999, 9999, 0, 0
+for y in range(img.size[1]):
+    for x in range(img.size[0]):
+        r, g, b = img.getpixel((x, y))
+        if r + g + b > 30:
+            if x < min_x: min_x = x
+            if y < min_y: min_y = y
+            if x > max_x: max_x = x
+            if y > max_y: max_y = y
+
+print(f'window bounds: ({min_x},{min_y}) to ({max_x},{max_y})')
+w, h = max_x - min_x + 1, max_y - min_y + 1
+img_win = img.crop((min_x, min_y, max_x + 1, max_y + 1))
+img_win.save('/tmp/ui-test/screenshot.png')
+print(f'saved cropped window: {w}x{h}')
+```
+
+Read `/tmp/ui-test/screenshot.png` with the Read tool to visually inspect it.
 
 ### Step 5: Assert pixel colors with Python/Pillow
 
@@ -116,15 +155,15 @@ def assert_color(x, y, expected_hex, tolerance=10, label=""):
 
 print(f"Screenshot size: {img.size}")
 
-# Adapt coordinates based on window position and known layout:
-# - 16px outer padding, ~40px row height, 18px circle at row center
-assert_color(10, 10, 0x282828, label="background")
+# Coordinates are relative to the cropped window (origin = top-left of window content).
+# Layout: titlebar ~22px, then 16px outer padding, ~40px row height, 18px circle.
+assert_color(10, 30, 0x282828, label="background")
 # assert_color(x, y, 0x383838, label="selected row bg")
 # assert_color(x, y, 0x282828, label="normal row bg")
 ```
 
 Adapt coordinates by reading `img.size` and reasoning about element positions
-from the known layout (16px padding, ~40px row height, etc.).
+from the known layout (titlebar ~22px, 16px padding, ~40px row height, etc.).
 
 ### Step 6: Verify keyboard navigation
 
