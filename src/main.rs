@@ -56,6 +56,7 @@ impl Todo {
 impl Render for TodoApp {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl gpui::IntoElement {
         let selected_index = self.selected_index;
+        let last_index = self.todos.len().saturating_sub(1);
 
         // Dark theme colors matching Todoist
         let theme_background = rgb(0x282828);
@@ -88,48 +89,67 @@ impl Render for TodoApp {
                             theme_circle_normal
                         };
 
-                        // Outer row: provides the bottom separator line
+                        // Wrapper: separator at the top (for all rows except the first),
+                        // row box painted on top of it via mt(-1) so the border aligns
+                        // flush with the separator. The row box border (blue or transparent)
+                        // paints last and covers the separator pixel when selected.
                         div()
                             .flex()
                             .flex_col()
-                            .border_b(px(1.0))
-                            .border_color(theme_separator)
-                            // Inner content row: contains the focus highlight + circle + text
+                            // Separator: shown above every row except the first.
+                            .when(i > 0, |el| {
+                                el.child(
+                                    div()
+                                        .h(px(1.0))
+                                        .ml(px(8.0))
+                                        .mr(px(8.0))
+                                        .bg(theme_separator),
+                                )
+                            })
+                            // Row box: mt(-1) pulls it up to sit flush on the separator so
+                            // the border bottom aligns with the separator line.
                             .child(
                                 div()
                                     .flex()
-                                    .flex_1()
-                                    .items_start()
+                                    .flex_col()
                                     .border_1()
                                     .rounded(px(6.0))
                                     .when(is_selected, |el| {
                                         el.border_color(theme_focus_border)
                                             .bg(theme_focus_background)
                                     })
+                                    .when(!is_selected, |el| {
+                                        el.border_color(gpui::transparent_black())
+                                    })
+
                                     .px(px(8.0))
                                     .py(px(10.0))
-                                    // Circle — flex_none so it never grows/shrinks, mt aligns it with the first text line
+                                    // Content: circle + text
                                     .child(
                                         div()
-                                            .flex_none()
-                                            .w(px(18.0))
-                                            .h(px(18.0))
-                                            .mt(px(1.0))
-                                            .border(px(1.5))
-                                            .border_color(circle_color)
-                                            .rounded_full()
-                                            .mr(px(12.0)),
-                                    )
-                                    // Text — w_full + min_w(0) gives definite width so text wraps
-                                    .child(
-                                        div()
-                                            .w_full()
-                                            .min_w(px(0.0))
-                                            .line_height(gpui::relative(1.4))
-                                            .child(todo.title.clone()),
-                                    ),
-                            )
-                    })),
+                                            .flex()
+                                            .items_start()
+                                            .child(
+                                                div()
+                                                    .flex_none()
+                                                    .w(px(18.0))
+                                                    .h(px(18.0))
+                                                    .mt(px(1.0))
+                                                    .border(px(1.5))
+                                                    .border_color(circle_color)
+                                                    .rounded_full()
+                                                    .mr(px(12.0)),
+                                            )
+                                            .child(
+                                                div()
+                                                    .w_full()
+                                                    .min_w(px(0.0))
+                                                    .line_height(gpui::relative(1.4))
+                                                    .child(todo.title.clone()),
+                                             ),
+                                     ),
+                             )
+                     })),
             )
     }
 }
