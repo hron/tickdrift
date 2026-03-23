@@ -259,6 +259,109 @@ fn test_layout_height_is_fixed() {
 }
 ```
 
+## Headless Wayland UI Verification
+
+Use this when the app must be verified on Linux without showing a window. This workflow is verified working on Linux/Wayland with an AMD GPU running sway + wgpu/Vulkan.
+
+### Required Tools
+
+- `sway` — Wayland compositor with headless backend
+- `grim` — screenshot capture (uses `zwlr_screencopy_manager_v1`)
+- `wtype` — keyboard input injection
+- `python3` + `Pillow` — pixel color assertions (`pip install Pillow`)
+
+### Critical: Use WLR_RENDERER=vulkan
+
+**Do not use `WLR_RENDERER=pixman`.** With pixman, sway does not expose `zwp_linux_dmabuf_v1`, which means Mesa cannot obtain a DRM file descriptor. This causes a fatal LLVM/radv shader compilation crash (`LLVM ERROR: Cannot select ... fs_variant_partial`) when the GPUI app starts.
+
+With `WLR_RENDERER=vulkan`, sway exposes `zwp_linux_dmabuf_v1` and the app starts correctly.
+
+### Step 1: Start headless sway
+
+```bash
+mkdir -p /tmp/ui-test
+WLR_BACKENDS=headless WLR_RENDERER=vulkan XDG_RUNTIME_DIR=/tmp/ui-test \
+  sway --config /dev/null > /tmp/ui-test/sway.log 2>&1 &
+sleep 2
+```
+
+The `swaybg` error in the log is harmless. Verify it is up:
+
+```bash
+ls /tmp/ui-test/wayland-1  # socket must exist
+```
+
+### Step 2: Launch the app
+
+```bash
+XDG_RUNTIME_DIR=/tmp/ui-test WAYLAND_DISPLAY=wayland-1 \
+  ./target/debug/todoz > /tmp/ui-test/app.log 2>&1 &
+sleep 3  # wait for first frame to render
+```
+
+### Step 3: Capture a screenshot
+
+```bash
+XDG_RUNTIME_DIR=/tmp/ui-test WAYLAND_DISPLAY=wayland-1 \
+  grim /tmp/ui-test/screenshot.png
+```
+
+### Step 4: Send keyboard input
+
+```bash
+XDG_RUNTIME_DIR=/tmp/ui-test WAYLAND_DISPLAY=wayland-1 \
+  wtype -k Down   # press Down arrow
+sleep 0.3
+XDG_RUNTIME_DIR=/tmp/ui-test WAYLAND_DISPLAY=wayland-1 \
+  grim /tmp/ui-test/screenshot-after-down.png
+```
+
+### Step 5: Assert pixel colors
+
+Use Python + Pillow:
+
+```python
+from PIL import Image
+
+img = Image.open('/tmp/ui-test/screenshot.png').convert('RGB')
+
+def assert_color(x, y, expected_hex, tolerance=5):
+    r, g, b = img.getpixel((x, y))
+    er = (expected_hex >> 16) & 0xff
+    eg = (expected_hex >> 8) & 0xff
+    eb = expected_hex & 0xff
+    assert abs(r - er) <= tolerance, f"R mismatch at ({x},{y}): got {r}, expected {er}"
+    assert abs(g - eg) <= tolerance, f"G mismatch at ({x},{y}): got {g}, expected {eg}"
+    assert abs(b - eb) <= tolerance, f"B mismatch at ({x},{y}): got {b}, expected {eb}"
+
+# Background should be #fdfdfd
+assert_color(640, 500, 0xfdfdfd)
+
+# Selected item background should be #f9f9f9
+assert_color(640, 66, 0xf9f9f9)
+```
+
+### Teardown
+
+```bash
+kill $(pgrep -f "target/debug/todoz") 2>/dev/null
+kill $(pgrep -x sway) 2>/dev/null
+```
+
+### What to Assert
+
+- Background pixel matches the theme background color (e.g. `#fdfdfd`).
+- Selected item pixel matches selection background color (e.g. `#f9f9f9`).
+- Focused/selected state changes produce a visible border or background change after sending input.
+- All expected text labels are visible (check the screenshot visually or read it with the Read tool).
+
+### Notes
+
+- Do not use GPUI headless screenshots on Linux — the headless renderer is not implemented.
+- Do not use `WLR_RENDERER=pixman` — it causes Mesa DRM fd failures and a crash.
+- Keep `XDG_RUNTIME_DIR` private (`/tmp/ui-test`) so tests don't affect the user desktop.
+- The `WARNING: radv is not a conformant Vulkan implementation` message is harmless.
+
 ### UTF-8 Safety
 
 ```rust
