@@ -3,10 +3,11 @@ use gpui::{
     App, AppContext, Context, FocusHandle, Focusable, InteractiveElement, ParentElement, Render,
     SharedString, Styled, TitlebarOptions, Window, WindowOptions, actions, div, px, size,
 };
-use gpui_component::{ActiveTheme, Root};
+use gpui_component::theme::Theme;
+use gpui_component::{ActiveTheme, Root, ThemeMode};
 use gpui_platform::application;
 
-actions!(todo_app, [MoveUp, MoveDown]);
+actions!(todo_app, [MoveUp, MoveDown, SwitchTheme]);
 
 struct TodoApp {
     todos: Vec<Todo>,
@@ -36,6 +37,15 @@ impl TodoApp {
             cx.notify();
         }
     }
+
+    fn switch_theme(&mut self, _: &SwitchTheme, window: &mut Window, cx: &mut Context<Self>) {
+        let new_mode = if Theme::global(cx).is_dark() {
+            ThemeMode::Light
+        } else {
+            ThemeMode::Dark
+        };
+        Theme::change(new_mode, Some(window), cx);
+    }
 }
 
 #[derive(Clone)]
@@ -57,9 +67,7 @@ impl Render for TodoApp {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl gpui::IntoElement {
         let selected_index = self.selected_index;
 
-        let bg = cx.theme().background;
-        let fg = cx.theme().foreground;
-        let separator = cx.theme().border;
+        let separator = cx.theme().muted;
         let circle_normal = cx.theme().muted_foreground;
         let circle_focused = cx.theme().primary;
         let focus_border = cx.theme().primary;
@@ -70,10 +78,11 @@ impl Render for TodoApp {
             .track_focus(&self.focus_handle(cx))
             .on_action(cx.listener(TodoApp::move_up))
             .on_action(cx.listener(TodoApp::move_down))
+            .on_action(cx.listener(TodoApp::switch_theme))
             .size_full()
             .text_size(px(14.0))
-            .text_color(fg)
-            .bg(bg)
+            .text_color(cx.theme().foreground)
+            .bg(cx.theme().background)
             .p(px(16.0))
             .child(
                 div()
@@ -96,9 +105,7 @@ impl Render for TodoApp {
                             .flex_col()
                             // Separator: shown above every row except the first.
                             .when(i > 0, |el| {
-                                el.child(
-                                    div().h(px(1.0)).ml(px(8.0)).mr(px(8.0)).bg(separator),
-                                )
+                                el.child(div().h(px(1.0)).ml(px(8.0)).mr(px(8.0)).bg(separator))
                             })
                             // Row box
                             .child(
@@ -168,6 +175,7 @@ fn main() {
         cx.bind_keys([
             gpui::KeyBinding::new("up", MoveUp, None),
             gpui::KeyBinding::new("down", MoveDown, None),
+            gpui::KeyBinding::new("ctrl-alt-t", SwitchTheme, None),
         ]);
 
         let bounds = gpui::Bounds::centered(None, size(px(400.0), px(600.0)), cx);
