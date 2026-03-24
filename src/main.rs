@@ -1,8 +1,9 @@
 use gpui::prelude::FluentBuilder;
 use gpui::{
     App, AppContext, Context, FocusHandle, Focusable, InteractiveElement, ParentElement, Render,
-    SharedString, Styled, TitlebarOptions, Window, WindowOptions, actions, div, px, rgb, size,
+    SharedString, Styled, TitlebarOptions, Window, WindowOptions, actions, div, px, size,
 };
+use gpui_component::{ActiveTheme, Root};
 use gpui_platform::application;
 
 actions!(todo_app, [MoveUp, MoveDown]);
@@ -55,16 +56,14 @@ impl Todo {
 impl Render for TodoApp {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl gpui::IntoElement {
         let selected_index = self.selected_index;
-        let last_index = self.todos.len().saturating_sub(1);
 
-        // Dark theme colors matching Todoist
-        let theme_background = rgb(0x282828);
-        let theme_text = rgb(0xf0f0f0);
-        let theme_separator = rgb(0x3d3d3d);
-        let theme_circle_normal = rgb(0x777777);
-        let theme_circle_focused = rgb(0x4a9eff);
-        let theme_focus_border = rgb(0x4a9eff);
-        let theme_focus_background = rgb(0x383838);
+        let bg = cx.theme().background;
+        let fg = cx.theme().foreground;
+        let separator = cx.theme().border;
+        let circle_normal = cx.theme().muted_foreground;
+        let circle_focused = cx.theme().primary;
+        let focus_border = cx.theme().primary;
+        let focus_bg = cx.theme().primary.opacity(0.05);
 
         div()
             .key_context("TodoApp")
@@ -73,8 +72,8 @@ impl Render for TodoApp {
             .on_action(cx.listener(TodoApp::move_down))
             .size_full()
             .text_size(px(14.0))
-            .text_color(theme_text)
-            .bg(theme_background)
+            .text_color(fg)
+            .bg(bg)
             .p(px(16.0))
             .child(
                 div()
@@ -83,14 +82,14 @@ impl Render for TodoApp {
                     .children(self.todos.iter().enumerate().map(|(i, todo)| {
                         let is_selected = i == selected_index;
                         let circle_color = if is_selected {
-                            theme_circle_focused
+                            circle_focused
                         } else {
-                            theme_circle_normal
+                            circle_normal
                         };
 
                         // Wrapper: separator at the top (for all rows except the first),
                         // row box painted on top of it via mt(-1) so the border aligns
-                        // flush with the separator. The row box border (blue or transparent)
+                        // flush with the separator. The row box border (primary or transparent)
                         // paints last and covers the separator pixel when selected.
                         div()
                             .flex()
@@ -98,11 +97,10 @@ impl Render for TodoApp {
                             // Separator: shown above every row except the first.
                             .when(i > 0, |el| {
                                 el.child(
-                                    div().h(px(1.0)).ml(px(8.0)).mr(px(8.0)).bg(theme_separator),
+                                    div().h(px(1.0)).ml(px(8.0)).mr(px(8.0)).bg(separator),
                                 )
                             })
-                            // Row box: mt(-1) pulls it up to sit flush on the separator so
-                            // the border bottom aligns with the separator line.
+                            // Row box
                             .child(
                                 div()
                                     .flex()
@@ -110,8 +108,7 @@ impl Render for TodoApp {
                                     .border_1()
                                     .rounded(px(6.0))
                                     .when(is_selected, |el| {
-                                        el.border_color(theme_focus_border)
-                                            .bg(theme_focus_background)
+                                        el.border_color(focus_border).bg(focus_bg)
                                     })
                                     .when(!is_selected, |el| {
                                         el.border_color(gpui::transparent_black())
@@ -166,6 +163,8 @@ fn main() {
     ];
 
     application().run(|cx: &mut App| {
+        gpui_component::init(cx);
+
         cx.bind_keys([
             gpui::KeyBinding::new("up", MoveUp, None),
             gpui::KeyBinding::new("down", MoveDown, None),
@@ -182,7 +181,7 @@ fn main() {
             ..Default::default()
         };
         cx.open_window(options, |window, cx| {
-            cx.new(|cx| {
+            let view = cx.new(|cx| {
                 let focus_handle = cx.focus_handle();
                 window.focus(&focus_handle, cx);
                 TodoApp {
@@ -190,7 +189,8 @@ fn main() {
                     selected_index: 0,
                     focus_handle,
                 }
-            })
+            });
+            cx.new(|cx| Root::new(view, window, cx))
         })
         .unwrap();
         cx.activate(true);

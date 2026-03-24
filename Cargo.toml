@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 gpui = { git = "https://github.com/zed-industries/zed.git", package = "gpui", features = ["test-support", "wayland"] }
 gpui-platform = { git = "https://github.com/zed-industries/zed.git", package = "gpui_platform", features = ["wayland"] }
+gpui-component = { git = "https://github.com/longbridge/gpui-component", package = "gpui-component" }
 
 [profile.release]
 strip = true
