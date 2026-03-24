@@ -1,9 +1,8 @@
-use gpui::{
-    App, AppContext, Context, FocusHandle, Focusable, InteractiveElement, ParentElement,
-    Render, SharedString, Styled, TitlebarOptions, Window, WindowOptions, actions, div, px, rgb,
-    size,
-};
 use gpui::prelude::FluentBuilder;
+use gpui::{
+    App, AppContext, Context, FocusHandle, Focusable, InteractiveElement, ParentElement, Render,
+    SharedString, Styled, TitlebarOptions, Window, WindowOptions, actions, div, px, rgb, size,
+};
 use gpui_platform::application;
 
 actions!(todo_app, [MoveUp, MoveDown]);
@@ -99,11 +98,7 @@ impl Render for TodoApp {
                             // Separator: shown above every row except the first.
                             .when(i > 0, |el| {
                                 el.child(
-                                    div()
-                                        .h(px(1.0))
-                                        .ml(px(8.0))
-                                        .mr(px(8.0))
-                                        .bg(theme_separator),
+                                    div().h(px(1.0)).ml(px(8.0)).mr(px(8.0)).bg(theme_separator),
                                 )
                             })
                             // Row box: mt(-1) pulls it up to sit flush on the separator so
@@ -121,7 +116,6 @@ impl Render for TodoApp {
                                     .when(!is_selected, |el| {
                                         el.border_color(gpui::transparent_black())
                                     })
-
                                     .px(px(8.0))
                                     .py(px(10.0))
                                     // Content: circle + text
@@ -146,18 +140,24 @@ impl Render for TodoApp {
                                                     .min_w(px(0.0))
                                                     .line_height(gpui::relative(1.4))
                                                     .child(todo.title.clone()),
-                                             ),
-                                     ),
-                             )
-                     })),
+                                            ),
+                                    ),
+                            )
+                    })),
             )
     }
 }
 
 fn main() {
     let todos = vec![
-        Todo::new("Setup a mechanism to test gpui with screenshots for AI and myself", false),
-        Todo::new("Refactor the codebase, extract colors and assign names", false),
+        Todo::new(
+            "Setup a mechanism to test gpui with screenshots for AI and myself",
+            false,
+        ),
+        Todo::new(
+            "Refactor the codebase, extract colors and assign names",
+            false,
+        ),
         Todo::new("Improve the styles of todo list in todoz", false),
         Todo::new("Create git repo for todoz", false),
         Todo::new("Add mouse on hover handling to the tasks list", false),
@@ -225,31 +225,5 @@ mod tests {
             app.move_up(&MoveUp, window, cx);
             assert_eq!(app.selected_index, 0);
         });
-    }
-
-    #[test]
-    fn test_headless_app_context_api() {
-        use gpui::PlatformTextSystem;
-        use std::sync::Arc;
-
-        // This demonstrates the HeadlessAppContext API
-        // Note: Screenshots only work on macOS with headless Metal renderer
-        
-        // let text_system = Arc::new(gpui_linux::LinuxTextSystem::new());
-        // let mut cx = gpui::HeadlessAppContext::with_platform(
-        //     text_system,
-        //     Arc::new(()),
-        //     || gpui_platform::current_headless_renderer(),
-        // );
-        //
-        // let window = cx.open_window(gpui::size(px(400.0), px(300.0)), |_, cx| {
-        //     cx.new(|_| TodoApp { todos: vec![], selected_index: 0, focus_handle: cx.focus_handle() })
-        // }).unwrap();
-        //
-        // cx.run_until_parked();
-        // let screenshot = cx.capture_screenshot(window.into()).unwrap();
-        // screenshot.save("test_screenshot.png").unwrap();
-        
-        println!("HeadlessAppContext API available - screenshot requires macOS headless Metal renderer");
     }
 }
