@@ -8,6 +8,9 @@ gpui = { git = "https://github.com/zed-industries/zed.git", package = "gpui", fe
 gpui-platform = { git = "https://github.com/zed-industries/zed.git", package = "gpui_platform", features = ["wayland"] }
 gpui-component = { git = "https://github.com/longbridge/gpui-component", package = "gpui-component" }
 
+[dev-dependencies]
+gpui = { git = "https://github.com/zed-industries/zed.git", package = "gpui", features = ["wayland", "test-support"] }
+
 [profile.release]
 strip = true
 lto = true

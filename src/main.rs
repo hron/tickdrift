@@ -23,6 +23,20 @@ impl Focusable for TodoApp {
 }
 
 impl TodoApp {
+    fn new(todos: Vec<Todo>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let focus_handle = cx.focus_handle();
+        window.focus(&focus_handle, cx);
+        let sub = window.observe_window_appearance(|window, cx| {
+            Theme::sync_system_appearance(Some(window), cx);
+        });
+        Self {
+            todos,
+            selected_index: 0,
+            focus_handle,
+            _subscriptions: vec![sub],
+        }
+    }
+
     fn move_up(&mut self, _: &MoveUp, _window: &mut Window, cx: &mut Context<Self>) {
         if !self.todos.is_empty() {
             let len = self.todos.len() as isize;
@@ -191,19 +205,7 @@ fn main() {
         };
         cx.spawn(async move |cx| {
             cx.open_window(options, |window, cx| {
-                let view = cx.new(|cx| {
-                    let focus_handle = cx.focus_handle();
-                    window.focus(&focus_handle, cx);
-                    let sub = window.observe_window_appearance(|window, cx| {
-                        Theme::sync_system_appearance(Some(window), cx);
-                    });
-                    TodoApp {
-                        todos,
-                        selected_index: 0,
-                        focus_handle,
-                        _subscriptions: vec![sub],
-                    }
-                });
+                let view = cx.new(|cx| TodoApp::new(todos, window, cx));
                 cx.new(|cx| Root::new(view, window, cx))
             })
             .unwrap();
@@ -212,33 +214,28 @@ fn main() {
     });
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-//     #[gpui::test]
-//     async fn test_keyboard_navigation(cx: &mut gpui::TestAppContext) {
-//         let todos = vec![
-//             Todo::new("Learn Rust", false),
-//             Todo::new("Build a todo app", true),
-//             Todo::new("Add CRUD operations", false),
-//         ];
+    #[gpui::test]
+    async fn test_keyboard_navigation(cx: &mut gpui::TestAppContext) {
+        cx.update(|cx| gpui_component::init(cx));
 
-//         let app = cx.add_window(|_window, cx| {
-//             let focus_handle = cx.focus_handle();
-//             TodoApp {
-//                 todos,
-//                 selected_index: 0,
-//                 focus_handle,
-//             }
-//         });
+        let todos = vec![
+            Todo::new("Learn Rust", false),
+            Todo::new("Build a todo app", true),
+            Todo::new("Add CRUD operations", false),
+        ];
 
-//         _ = app.update(cx, |app, window, cx| {
-//             assert_eq!(app.selected_index, 0);
-//             app.move_down(&MoveDown, window, cx);
-//             assert_eq!(app.selected_index, 1);
-//             app.move_up(&MoveUp, window, cx);
-//             assert_eq!(app.selected_index, 0);
-//         });
-//     }
-// }
+        let app = cx.add_window(|window, cx| TodoApp::new(todos, window, cx));
+
+        _ = app.update(cx, |app, window, cx| {
+            assert_eq!(app.selected_index, 0);
+            app.move_down(&MoveDown, window, cx);
+            assert_eq!(app.selected_index, 1);
+            app.move_up(&MoveUp, window, cx);
+            assert_eq!(app.selected_index, 0);
+        });
+    }
+}
