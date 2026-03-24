@@ -1,7 +1,8 @@
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    App, AppContext, Context, FocusHandle, Focusable, InteractiveElement, ParentElement, Render,
-    SharedString, Styled, TitlebarOptions, Window, WindowOptions, actions, div, px, size,
+    App, AppContext, Application, Context, FocusHandle, Focusable, InteractiveElement,
+    ParentElement, Render, SharedString, Styled, TitlebarOptions, Window, WindowOptions, actions,
+    div, px, size,
 };
 use gpui_component::theme::Theme;
 use gpui_component::{ActiveTheme, Root, ThemeMode};
@@ -188,20 +189,22 @@ fn main() {
             app_id: Some("todoz".to_string()),
             ..Default::default()
         };
-        cx.open_window(options, |window, cx| {
-            let view = cx.new(|cx| {
-                let focus_handle = cx.focus_handle();
-                window.focus(&focus_handle, cx);
-                TodoApp {
-                    todos,
-                    selected_index: 0,
-                    focus_handle,
-                }
-            });
-            cx.new(|cx| Root::new(view, window, cx))
+        cx.spawn(async move |cx| {
+            cx.open_window(options, |window, cx| {
+                let view = cx.new(|cx| {
+                    let focus_handle = cx.focus_handle();
+                    window.focus(&focus_handle, cx);
+                    TodoApp {
+                        todos,
+                        selected_index: 0,
+                        focus_handle,
+                    }
+                });
+                cx.new(|cx| Root::new(view, window, cx))
+            })
+            .unwrap();
         })
-        .unwrap();
-        cx.activate(true);
+        .detach();
     });
 }
 
