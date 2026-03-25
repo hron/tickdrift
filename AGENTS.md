@@ -20,6 +20,29 @@ gpui = { git = "https://github.com/zed-industries/zed.git", package = "gpui", fe
 gpui-platform = { git = "https://github.com/zed-industries/zed.git", package = "gpui_platform" }
 ```
 
+## Colors — Never Hardcode
+
+**Always use `cx.theme()` fields from gpui-component's `ThemeColor`. Never use `rgb()`, `hsla()`, or hex literals for UI colors.**
+
+Pick the field that is semantically appropriate for the element's meaning:
+
+| `cx.theme()` field | Semantic meaning | Use for |
+|---|---|---|
+| `.background` | App/window background | Window fill, inner circle punch-out |
+| `.foreground` | Primary text | Body text |
+| `.muted` | Subtle background | Separators, dividers |
+| `.muted_foreground` | Disabled / low-emphasis | P4 circle, completed text, completed circle |
+| `.primary` | Brand / action | Selection border, focus rings |
+| `.danger` | Destructive / urgent (red) | P1 circle |
+| `.warning` | High priority / alert (yellow-orange) | P2 circle |
+| `.info` | Informational / medium (cyan-blue) | P3 circle |
+| `.success` | Positive outcome (green) | (reserved for future use) |
+| `.border` | Default border | Generic outlines |
+| `.ring` | Focus ring | Keyboard focus outlines |
+
+Full `ThemeColor` field list lives in the gpui-component source at:
+`crates/ui/src/theme/theme_color.rs`
+
 ## API Patterns
 
 - Use `gpui_platform::application()` to create app (not `gpui::Application::new()`)
@@ -187,21 +210,6 @@ changes correctly. It is the authoritative verification for navigation logic.
 kill $(pgrep -f "target/debug/todoz") 2>/dev/null
 kill $(pgrep -x sway) 2>/dev/null
 ```
-
-### Current theme colors to assert
-
-| Element | Color |
-|---|---|
-| App background | `#282828` |
-| Normal row background | `#282828` |
-| Selected row background | `#383838` |
-| Selected row border | `#4a9eff` |
-| Circle border (normal) | `#777777` |
-| Circle border (focused) | `#4a9eff` |
-| Text | `#f0f0f0` |
-| Row separator | `#3d3d3d` |
-
-**Keep this table up to date whenever theme colors change.**
 
 ## Project Structure
 

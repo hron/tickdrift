@@ -8,7 +8,28 @@ use gpui_component::theme::Theme;
 use gpui_component::{ActiveTheme, Root, ThemeMode};
 use gpui_platform::application;
 
-actions!(todo_app, [MoveUp, MoveDown, SwitchTheme, ToggleComplete]);
+actions!(
+    todo_app,
+    [
+        MoveUp,
+        MoveDown,
+        SwitchTheme,
+        ToggleComplete,
+        SetP1,
+        SetP2,
+        SetP3,
+        SetP4
+    ]
+);
+
+#[derive(Clone, Copy, PartialEq, Default, Debug)]
+enum Priority {
+    P1,
+    P2,
+    P3,
+    #[default]
+    P4,
+}
 
 struct TodoApp {
     todos: Vec<Todo>,
@@ -73,6 +94,29 @@ impl TodoApp {
         }
     }
 
+    fn set_priority(&mut self, priority: Priority, cx: &mut Context<Self>) {
+        if let Some(todo) = self.todos.get_mut(self.selected_index) {
+            todo.priority = priority;
+            cx.notify();
+        }
+    }
+
+    fn set_p1(&mut self, _: &SetP1, _window: &mut Window, cx: &mut Context<Self>) {
+        self.set_priority(Priority::P1, cx);
+    }
+
+    fn set_p2(&mut self, _: &SetP2, _window: &mut Window, cx: &mut Context<Self>) {
+        self.set_priority(Priority::P2, cx);
+    }
+
+    fn set_p3(&mut self, _: &SetP3, _window: &mut Window, cx: &mut Context<Self>) {
+        self.set_priority(Priority::P3, cx);
+    }
+
+    fn set_p4(&mut self, _: &SetP4, _window: &mut Window, cx: &mut Context<Self>) {
+        self.set_priority(Priority::P4, cx);
+    }
+
     fn switch_theme(&mut self, _: &SwitchTheme, window: &mut Window, cx: &mut Context<Self>) {
         let new_mode = if Theme::global(cx).is_dark() {
             ThemeMode::Light
@@ -87,6 +131,7 @@ impl TodoApp {
 struct Todo {
     title: SharedString,
     completed: bool,
+    priority: Priority,
 }
 
 impl Todo {
@@ -94,7 +139,13 @@ impl Todo {
         Self {
             title: title.into(),
             completed,
+            priority: Priority::default(),
         }
+    }
+
+    fn with_priority(mut self, priority: Priority) -> Self {
+        self.priority = priority;
+        self
     }
 }
 
@@ -103,11 +154,8 @@ impl Render for TodoApp {
         let selected_index = self.selected_index;
 
         let separator = cx.theme().muted;
-        let circle_normal = cx.theme().muted_foreground;
-        let circle_focused = cx.theme().primary;
         let focus_border = cx.theme().primary;
         let focus_bg = cx.theme().primary.opacity(0.05);
-        let completed_circle_bg = cx.theme().muted_foreground;
         let completed_text_color = cx.theme().muted_foreground;
 
         div()
@@ -117,6 +165,10 @@ impl Render for TodoApp {
             .on_action(cx.listener(TodoApp::move_down))
             .on_action(cx.listener(TodoApp::switch_theme))
             .on_action(cx.listener(TodoApp::toggle_complete))
+            .on_action(cx.listener(TodoApp::set_p1))
+            .on_action(cx.listener(TodoApp::set_p2))
+            .on_action(cx.listener(TodoApp::set_p3))
+            .on_action(cx.listener(TodoApp::set_p4))
             .size_full()
             .text_size(px(14.0))
             .text_color(cx.theme().foreground)
@@ -130,10 +182,12 @@ impl Render for TodoApp {
                         let is_selected = i == selected_index;
                         let is_completed = todo.completed;
 
-                        let circle_color = if is_selected {
-                            circle_focused
-                        } else {
-                            circle_normal
+                        // Circle color always reflects priority — selection shown by border only
+                        let circle_color = match todo.priority {
+                            Priority::P1 => cx.theme().danger,
+                            Priority::P2 => cx.theme().warning,
+                            Priority::P3 => cx.theme().info,
+                            Priority::P4 => cx.theme().muted_foreground,
                         };
 
                         // Wrapper: separator at the top (for all rows except the first),
@@ -168,7 +222,7 @@ impl Render for TodoApp {
                                             .flex()
                                             .items_start()
                                             .child(if is_completed {
-                                                // Completed: filled gray circle with checkmark text
+                                                // Completed: filled muted circle with checkmark
                                                 div()
                                                     .flex_none()
                                                     .w(px(18.0))
@@ -176,7 +230,7 @@ impl Render for TodoApp {
                                                     .mt(px(1.0))
                                                     .mr(px(12.0))
                                                     .rounded_full()
-                                                    .bg(completed_circle_bg)
+                                                    .bg(circle_color)
                                                     .cursor_pointer()
                                                     .flex()
                                                     .items_center()
@@ -195,7 +249,8 @@ impl Render for TodoApp {
                                                             .child("✓"),
                                                     )
                                             } else {
-                                                // Incomplete: hollow ring via outer fill + inner punch-out
+                                                // Incomplete: hollow ring — outer fill (priority
+                                                // color) + inner punch-out (background color)
                                                 div()
                                                     .flex_none()
                                                     .w(px(18.0))
@@ -216,8 +271,8 @@ impl Render for TodoApp {
                                                     )
                                                     .child(
                                                         div()
-                                                            .w(px(13.0))
-                                                            .h(px(13.0))
+                                                            .w(px(15.0))
+                                                            .h(px(15.0))
                                                             .rounded_full()
                                                             .bg(cx.theme().background),
                                                     )
@@ -245,16 +300,17 @@ fn main() {
         Todo::new(
             "Setup a mechanism to test gpui with screenshots for AI and myself",
             false,
-        ),
+        )
+        .with_priority(Priority::P1),
         Todo::new(
             "Refactor the codebase, extract colors and assign names",
             true,
         ),
-        Todo::new("Improve the styles of todo list in todoz", true),
-        Todo::new("Create git repo for todoz", false),
+        Todo::new("Improve the styles of todo list in todoz", true).with_priority(Priority::P2),
+        Todo::new("Create git repo for todoz", false).with_priority(Priority::P3),
         Todo::new("Add mouse on hover handling to the tasks list", true),
-        Todo::new("Implement (complete todo) keyboard shortcut", false),
-        Todo::new("Define next actions to create MVP todoz", false),
+        Todo::new("Implement (complete todo) keyboard shortcut", false).with_priority(Priority::P1),
+        Todo::new("Define next actions to create MVP todoz", false).with_priority(Priority::P3),
     ];
 
     application().run(|cx: &mut App| {
@@ -265,6 +321,10 @@ fn main() {
             gpui::KeyBinding::new("down", MoveDown, None),
             gpui::KeyBinding::new("ctrl-alt-t", SwitchTheme, None),
             gpui::KeyBinding::new("e", ToggleComplete, None),
+            gpui::KeyBinding::new("1", SetP1, None),
+            gpui::KeyBinding::new("2", SetP2, None),
+            gpui::KeyBinding::new("3", SetP3, None),
+            gpui::KeyBinding::new("4", SetP4, None),
         ]);
 
         let bounds = gpui::Bounds::centered(None, size(px(400.0), px(600.0)), cx);
@@ -339,7 +399,46 @@ mod tests {
             app.move_down(&MoveDown, window, cx);
             assert_eq!(app.selected_index, 2);
             app.toggle_complete(&ToggleComplete, window, cx);
-            assert!(!app.todos[2].completed, "task 2 should be incomplete after toggle");
+            assert!(
+                !app.todos[2].completed,
+                "task 2 should be incomplete after toggle"
+            );
+        });
+    }
+
+    #[gpui::test]
+    async fn test_set_priority(cx: &mut gpui::TestAppContext) {
+        cx.update(|cx| gpui_component::init(cx));
+
+        let todos = vec![
+            Todo::new("Task one", false),
+            Todo::new("Task two", false),
+            Todo::new("Task three", false),
+        ];
+
+        let app = cx.add_window(|window, cx| TodoApp::new(todos, window, cx));
+
+        _ = app.update(cx, |app, window, cx| {
+            // Default priority is P4
+            assert_eq!(app.todos[0].priority, Priority::P4);
+
+            // Set P1 on selected (index 0)
+            app.set_p1(&SetP1, window, cx);
+            assert_eq!(app.todos[0].priority, Priority::P1);
+
+            // Move to index 1, set P2
+            app.move_down(&MoveDown, window, cx);
+            app.set_p2(&SetP2, window, cx);
+            assert_eq!(app.todos[1].priority, Priority::P2);
+
+            // Move to index 2, set P3
+            app.move_down(&MoveDown, window, cx);
+            app.set_p3(&SetP3, window, cx);
+            assert_eq!(app.todos[2].priority, Priority::P3);
+
+            // Reset index 2 back to P4
+            app.set_p4(&SetP4, window, cx);
+            assert_eq!(app.todos[2].priority, Priority::P4);
         });
     }
 }
