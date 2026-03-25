@@ -2,7 +2,7 @@ use gpui::prelude::FluentBuilder;
 use gpui::{
     App, AppContext, Context, FocusHandle, Focusable, InteractiveElement, MouseButton,
     ParentElement, Render, SharedString, Styled, TitlebarOptions, Window, WindowOptions, actions,
-    div, px, size,
+    div, px, rems, size,
 };
 use gpui_component::theme::Theme;
 use gpui_component::{ActiveTheme, Root, ThemeMode};
@@ -18,9 +18,17 @@ actions!(
         SetP1,
         SetP2,
         SetP3,
-        SetP4
+        SetP4,
+        ZoomIn,
+        ZoomOut,
+        ZoomReset
     ]
 );
+
+const DEFAULT_FONT_SIZE: f32 = 16.0;
+const MIN_FONT_SIZE: f32 = 8.0;
+const MAX_FONT_SIZE: f32 = 32.0;
+const ZOOM_STEP: f32 = 2.0;
 
 #[derive(Clone, Copy, PartialEq, Default, Debug)]
 enum Priority {
@@ -35,6 +43,7 @@ struct TodoApp {
     todos: Vec<Todo>,
     selected_index: usize,
     focus_handle: FocusHandle,
+    font_size: f32,
     _subscriptions: Vec<gpui::Subscription>,
 }
 
@@ -55,6 +64,7 @@ impl TodoApp {
             todos,
             selected_index: 0,
             focus_handle,
+            font_size: DEFAULT_FONT_SIZE,
             _subscriptions: vec![sub],
         }
     }
@@ -125,6 +135,21 @@ impl TodoApp {
         };
         Theme::change(new_mode, Some(window), cx);
     }
+
+    fn zoom_in(&mut self, _: &ZoomIn, _window: &mut Window, cx: &mut Context<Self>) {
+        self.font_size = (self.font_size + ZOOM_STEP).min(MAX_FONT_SIZE);
+        cx.notify();
+    }
+
+    fn zoom_out(&mut self, _: &ZoomOut, _window: &mut Window, cx: &mut Context<Self>) {
+        self.font_size = (self.font_size - ZOOM_STEP).max(MIN_FONT_SIZE);
+        cx.notify();
+    }
+
+    fn zoom_reset(&mut self, _: &ZoomReset, _window: &mut Window, cx: &mut Context<Self>) {
+        self.font_size = DEFAULT_FONT_SIZE;
+        cx.notify();
+    }
 }
 
 #[derive(Clone)]
@@ -150,7 +175,10 @@ impl Todo {
 }
 
 impl Render for TodoApp {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl gpui::IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl gpui::IntoElement {
+        // Drive all rem()-based sizes from the current zoom level.
+        window.set_rem_size(px(self.font_size));
+
         let selected_index = self.selected_index;
 
         let separator = cx.theme().muted;
@@ -169,11 +197,16 @@ impl Render for TodoApp {
             .on_action(cx.listener(TodoApp::set_p2))
             .on_action(cx.listener(TodoApp::set_p3))
             .on_action(cx.listener(TodoApp::set_p4))
+            .on_action(cx.listener(TodoApp::zoom_in))
+            .on_action(cx.listener(TodoApp::zoom_out))
+            .on_action(cx.listener(TodoApp::zoom_reset))
             .size_full()
-            .text_size(px(14.0))
+            // 0.875rem = 14px at default zoom (16px rem)
+            .text_size(rems(0.875))
             .text_color(cx.theme().foreground)
             .bg(cx.theme().background)
-            .p(px(16.0))
+            // 1rem padding
+            .p(rems(1.0))
             .child(
                 div()
                     .flex()
@@ -198,8 +231,15 @@ impl Render for TodoApp {
                             .flex()
                             .flex_col()
                             // Separator: shown above every row except the first.
+                            // Keep as px(1) — physical pixel, must not scale.
                             .when(i > 0, |el| {
-                                el.child(div().h(px(1.0)).ml(px(8.0)).mr(px(8.0)).bg(separator))
+                                el.child(
+                                    div()
+                                        .h(px(1.0))
+                                        .ml(rems(0.5))
+                                        .mr(rems(0.5))
+                                        .bg(separator),
+                                )
                             })
                             // Row box
                             .child(
@@ -207,28 +247,31 @@ impl Render for TodoApp {
                                     .flex()
                                     .flex_col()
                                     .border_1()
-                                    .rounded(px(6.0))
+                                    // 0.375rem border radius
+                                    .rounded(rems(0.375))
                                     .when(is_selected, |el| {
                                         el.border_color(focus_border).bg(focus_bg)
                                     })
                                     .when(!is_selected, |el| {
                                         el.border_color(gpui::transparent_black())
                                     })
-                                    .px(px(8.0))
-                                    .py(px(10.0))
+                                    // 0.5rem horizontal, 0.625rem vertical padding
+                                    .px(rems(0.5))
+                                    .py(rems(0.625))
                                     // Content: circle + text
                                     .child(
                                         div()
                                             .flex()
                                             .items_start()
                                             .child(if is_completed {
-                                                // Completed: filled muted circle with checkmark
+                                                // Completed: filled circle with checkmark
                                                 div()
                                                     .flex_none()
-                                                    .w(px(18.0))
-                                                    .h(px(18.0))
-                                                    .mt(px(1.0))
-                                                    .mr(px(12.0))
+                                                    // 1.125rem circle
+                                                    .w(rems(1.125))
+                                                    .h(rems(1.125))
+                                                    .mt(rems(0.0625))
+                                                    .mr(rems(0.75))
                                                     .rounded_full()
                                                     .bg(circle_color)
                                                     .cursor_pointer()
@@ -243,7 +286,7 @@ impl Render for TodoApp {
                                                     )
                                                     .child(
                                                         div()
-                                                            .text_size(px(11.0))
+                                                            .text_size(rems(0.6875))
                                                             .line_height(gpui::relative(1.0))
                                                             .text_color(cx.theme().background)
                                                             .child("✓"),
@@ -253,10 +296,10 @@ impl Render for TodoApp {
                                                 // color) + inner punch-out (background color)
                                                 div()
                                                     .flex_none()
-                                                    .w(px(18.0))
-                                                    .h(px(18.0))
-                                                    .mt(px(1.0))
-                                                    .mr(px(12.0))
+                                                    .w(rems(1.125))
+                                                    .h(rems(1.125))
+                                                    .mt(rems(0.0625))
+                                                    .mr(rems(0.75))
                                                     .rounded_full()
                                                     .cursor_pointer()
                                                     .flex()
@@ -271,8 +314,9 @@ impl Render for TodoApp {
                                                     )
                                                     .child(
                                                         div()
-                                                            .w(px(15.0))
-                                                            .h(px(15.0))
+                                                            // 0.9375rem inner circle punch-out
+                                                            .w(rems(0.9375))
+                                                            .h(rems(0.9375))
                                                             .rounded_full()
                                                             .bg(cx.theme().background),
                                                     )
@@ -325,6 +369,10 @@ fn main() {
             gpui::KeyBinding::new("2", SetP2, None),
             gpui::KeyBinding::new("3", SetP3, None),
             gpui::KeyBinding::new("4", SetP4, None),
+            gpui::KeyBinding::new("ctrl-=", ZoomIn, None),
+            gpui::KeyBinding::new("ctrl-+", ZoomIn, None),
+            gpui::KeyBinding::new("ctrl--", ZoomOut, None),
+            gpui::KeyBinding::new("ctrl-0", ZoomReset, None),
         ]);
 
         let bounds = gpui::Bounds::centered(None, size(px(400.0), px(600.0)), cx);
@@ -439,6 +487,48 @@ mod tests {
             // Reset index 2 back to P4
             app.set_p4(&SetP4, window, cx);
             assert_eq!(app.todos[2].priority, Priority::P4);
+        });
+    }
+
+    #[gpui::test]
+    async fn test_zoom(cx: &mut gpui::TestAppContext) {
+        cx.update(|cx| gpui_component::init(cx));
+
+        let todos = vec![Todo::new("Task one", false)];
+
+        let app = cx.add_window(|window, cx| TodoApp::new(todos, window, cx));
+
+        _ = app.update(cx, |app, window, cx| {
+            // Default font size
+            assert_eq!(app.font_size, DEFAULT_FONT_SIZE);
+
+            // Zoom in increases font size by ZOOM_STEP
+            app.zoom_in(&ZoomIn, window, cx);
+            assert_eq!(app.font_size, DEFAULT_FONT_SIZE + ZOOM_STEP);
+
+            // Zoom in again
+            app.zoom_in(&ZoomIn, window, cx);
+            assert_eq!(app.font_size, DEFAULT_FONT_SIZE + ZOOM_STEP * 2.0);
+
+            // Zoom out decreases font size by ZOOM_STEP
+            app.zoom_out(&ZoomOut, window, cx);
+            assert_eq!(app.font_size, DEFAULT_FONT_SIZE + ZOOM_STEP);
+
+            // Reset returns to default
+            app.zoom_reset(&ZoomReset, window, cx);
+            assert_eq!(app.font_size, DEFAULT_FONT_SIZE);
+
+            // Zoom out below minimum clamps at MIN_FONT_SIZE
+            for _ in 0..20 {
+                app.zoom_out(&ZoomOut, window, cx);
+            }
+            assert_eq!(app.font_size, MIN_FONT_SIZE);
+
+            // Zoom in above maximum clamps at MAX_FONT_SIZE
+            for _ in 0..20 {
+                app.zoom_in(&ZoomIn, window, cx);
+            }
+            assert_eq!(app.font_size, MAX_FONT_SIZE);
         });
     }
 }
