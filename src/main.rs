@@ -1,13 +1,14 @@
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    App, AppContext, Context, FocusHandle, Focusable, InteractiveElement, ParentElement, Render,
-    SharedString, Styled, TitlebarOptions, Window, WindowOptions, actions, div, px, size,
+    App, AppContext, Context, FocusHandle, Focusable, InteractiveElement, MouseButton,
+    ParentElement, Render, SharedString, Styled, TitlebarOptions, Window, WindowOptions, actions,
+    div, px, size,
 };
 use gpui_component::theme::Theme;
 use gpui_component::{ActiveTheme, Root, ThemeMode};
 use gpui_platform::application;
 
-actions!(todo_app, [MoveUp, MoveDown, SwitchTheme]);
+actions!(todo_app, [MoveUp, MoveDown, SwitchTheme, ToggleComplete]);
 
 struct TodoApp {
     todos: Vec<Todo>,
@@ -53,6 +54,25 @@ impl TodoApp {
         }
     }
 
+    fn toggle_complete(
+        &mut self,
+        _: &ToggleComplete,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(todo) = self.todos.get_mut(self.selected_index) {
+            todo.completed = !todo.completed;
+            cx.notify();
+        }
+    }
+
+    fn toggle_complete_at(&mut self, index: usize, cx: &mut Context<Self>) {
+        if let Some(todo) = self.todos.get_mut(index) {
+            todo.completed = !todo.completed;
+            cx.notify();
+        }
+    }
+
     fn switch_theme(&mut self, _: &SwitchTheme, window: &mut Window, cx: &mut Context<Self>) {
         let new_mode = if Theme::global(cx).is_dark() {
             ThemeMode::Light
@@ -87,6 +107,8 @@ impl Render for TodoApp {
         let circle_focused = cx.theme().primary;
         let focus_border = cx.theme().primary;
         let focus_bg = cx.theme().primary.opacity(0.05);
+        let completed_circle_bg = cx.theme().muted_foreground;
+        let completed_text_color = cx.theme().muted_foreground;
 
         div()
             .key_context("TodoApp")
@@ -94,6 +116,7 @@ impl Render for TodoApp {
             .on_action(cx.listener(TodoApp::move_up))
             .on_action(cx.listener(TodoApp::move_down))
             .on_action(cx.listener(TodoApp::switch_theme))
+            .on_action(cx.listener(TodoApp::toggle_complete))
             .size_full()
             .text_size(px(14.0))
             .text_color(cx.theme().foreground)
@@ -105,6 +128,8 @@ impl Render for TodoApp {
                     .flex_col()
                     .children(self.todos.iter().enumerate().map(|(i, todo)| {
                         let is_selected = i == selected_index;
+                        let is_completed = todo.completed;
+
                         let circle_color = if is_selected {
                             circle_focused
                         } else {
@@ -142,22 +167,70 @@ impl Render for TodoApp {
                                         div()
                                             .flex()
                                             .items_start()
-                                            .child(
+                                            .child(if is_completed {
+                                                // Completed: filled gray circle with checkmark text
                                                 div()
                                                     .flex_none()
                                                     .w(px(18.0))
                                                     .h(px(18.0))
                                                     .mt(px(1.0))
-                                                    .border(px(1.5))
-                                                    .border_color(circle_color)
+                                                    .mr(px(12.0))
                                                     .rounded_full()
-                                                    .mr(px(12.0)),
-                                            )
+                                                    .bg(completed_circle_bg)
+                                                    .cursor_pointer()
+                                                    .flex()
+                                                    .items_center()
+                                                    .justify_center()
+                                                    .on_mouse_down(
+                                                        MouseButton::Left,
+                                                        cx.listener(move |this, _, _window, cx| {
+                                                            this.toggle_complete_at(i, cx);
+                                                        }),
+                                                    )
+                                                    .child(
+                                                        div()
+                                                            .text_size(px(11.0))
+                                                            .line_height(gpui::relative(1.0))
+                                                            .text_color(cx.theme().background)
+                                                            .child("✓"),
+                                                    )
+                                            } else {
+                                                // Incomplete: hollow ring via outer fill + inner punch-out
+                                                div()
+                                                    .flex_none()
+                                                    .w(px(18.0))
+                                                    .h(px(18.0))
+                                                    .mt(px(1.0))
+                                                    .mr(px(12.0))
+                                                    .rounded_full()
+                                                    .cursor_pointer()
+                                                    .flex()
+                                                    .items_center()
+                                                    .justify_center()
+                                                    .bg(circle_color)
+                                                    .on_mouse_down(
+                                                        MouseButton::Left,
+                                                        cx.listener(move |this, _, _window, cx| {
+                                                            this.toggle_complete_at(i, cx);
+                                                        }),
+                                                    )
+                                                    .child(
+                                                        div()
+                                                            .w(px(13.0))
+                                                            .h(px(13.0))
+                                                            .rounded_full()
+                                                            .bg(cx.theme().background),
+                                                    )
+                                            })
                                             .child(
                                                 div()
                                                     .w_full()
                                                     .min_w(px(0.0))
                                                     .line_height(gpui::relative(1.4))
+                                                    .when(is_completed, |el| {
+                                                        el.line_through()
+                                                            .text_color(completed_text_color)
+                                                    })
                                                     .child(todo.title.clone()),
                                             ),
                                     ),
@@ -175,11 +248,11 @@ fn main() {
         ),
         Todo::new(
             "Refactor the codebase, extract colors and assign names",
-            false,
+            true,
         ),
-        Todo::new("Improve the styles of todo list in todoz", false),
+        Todo::new("Improve the styles of todo list in todoz", true),
         Todo::new("Create git repo for todoz", false),
-        Todo::new("Add mouse on hover handling to the tasks list", false),
+        Todo::new("Add mouse on hover handling to the tasks list", true),
         Todo::new("Implement (complete todo) keyboard shortcut", false),
         Todo::new("Define next actions to create MVP todoz", false),
     ];
@@ -191,6 +264,7 @@ fn main() {
             gpui::KeyBinding::new("up", MoveUp, None),
             gpui::KeyBinding::new("down", MoveDown, None),
             gpui::KeyBinding::new("ctrl-alt-t", SwitchTheme, None),
+            gpui::KeyBinding::new("e", ToggleComplete, None),
         ]);
 
         let bounds = gpui::Bounds::centered(None, size(px(400.0), px(600.0)), cx);
@@ -236,6 +310,36 @@ mod tests {
             assert_eq!(app.selected_index, 1);
             app.move_up(&MoveUp, window, cx);
             assert_eq!(app.selected_index, 0);
+        });
+    }
+
+    #[gpui::test]
+    async fn test_toggle_complete(cx: &mut gpui::TestAppContext) {
+        cx.update(|cx| gpui_component::init(cx));
+
+        let todos = vec![
+            Todo::new("Task one", false),
+            Todo::new("Task two", false),
+            Todo::new("Task three", true),
+        ];
+
+        let app = cx.add_window(|window, cx| TodoApp::new(todos, window, cx));
+
+        _ = app.update(cx, |app, window, cx| {
+            // selected_index = 0, task is incomplete → toggle to complete
+            app.toggle_complete(&ToggleComplete, window, cx);
+            assert!(app.todos[0].completed, "task 0 should be completed");
+
+            // toggle again → back to incomplete
+            app.toggle_complete(&ToggleComplete, window, cx);
+            assert!(!app.todos[0].completed, "task 0 should be incomplete again");
+
+            // move to task 2 (already complete) and toggle → incomplete
+            app.move_down(&MoveDown, window, cx);
+            app.move_down(&MoveDown, window, cx);
+            assert_eq!(app.selected_index, 2);
+            app.toggle_complete(&ToggleComplete, window, cx);
+            assert!(!app.todos[2].completed, "task 2 should be incomplete after toggle");
         });
     }
 }
