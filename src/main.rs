@@ -1,130 +1,51 @@
-use gpui::prelude::FluentBuilder;
+mod todo;
+mod todolist;
+
 use gpui::{
-    App, AppContext, Context, FocusHandle, Focusable, InteractiveElement, MouseButton,
-    ParentElement, Render, SharedString, Styled, TitlebarOptions, Window, WindowOptions, actions,
-    div, px, rems, size,
+    AppContext, Context, FocusHandle, Focusable, InteractiveElement, ParentElement, Render, Styled,
+    TitlebarOptions, Window, WindowOptions, actions, div, px, rems, size,
 };
 use gpui_component::theme::Theme;
 use gpui_component::{ActiveTheme, Root, ThemeMode};
 use gpui_platform::application;
 
-actions!(
-    todo_app,
-    [
-        MoveUp,
-        MoveDown,
-        SwitchTheme,
-        ToggleComplete,
-        SetP1,
-        SetP2,
-        SetP3,
-        SetP4,
-        ZoomIn,
-        ZoomOut,
-        ZoomReset
-    ]
-);
+use crate::todo::{Priority, Todo};
+use crate::todolist::TodoList;
+
+actions!(todo_app, [SwitchTheme, ZoomIn, ZoomOut, ZoomReset,]);
 
 const DEFAULT_FONT_SIZE: f32 = 16.0;
 const MIN_FONT_SIZE: f32 = 8.0;
 const MAX_FONT_SIZE: f32 = 32.0;
 const ZOOM_STEP: f32 = 2.0;
 
-#[derive(Clone, Copy, PartialEq, Default, Debug)]
-enum Priority {
-    P1,
-    P2,
-    P3,
-    #[default]
-    P4,
-}
-
-struct TodoApp {
-    todos: Vec<Todo>,
-    selected_index: usize,
+struct AppView {
+    todo_list: gpui::Entity<TodoList>,
     focus_handle: FocusHandle,
     font_size: f32,
     _subscriptions: Vec<gpui::Subscription>,
 }
 
-impl Focusable for TodoApp {
-    fn focus_handle(&self, _cx: &App) -> FocusHandle {
+impl Focusable for AppView {
+    fn focus_handle(&self, _cx: &gpui::App) -> FocusHandle {
         self.focus_handle.clone()
     }
 }
 
-impl TodoApp {
+impl AppView {
     fn new(todos: Vec<Todo>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let focus_handle = cx.focus_handle();
         window.focus(&focus_handle, cx);
         let sub = window.observe_window_appearance(|window, cx| {
             Theme::sync_system_appearance(Some(window), cx);
         });
+        let todo_list = cx.new(|cx| TodoList::new(todos, window, cx));
         Self {
-            todos,
-            selected_index: 0,
+            todo_list,
             focus_handle,
             font_size: DEFAULT_FONT_SIZE,
             _subscriptions: vec![sub],
         }
-    }
-
-    fn move_up(&mut self, _: &MoveUp, _window: &mut Window, cx: &mut Context<Self>) {
-        if !self.todos.is_empty() {
-            let len = self.todos.len() as isize;
-            self.selected_index = (self.selected_index as isize - 1 + len) as usize % len as usize;
-            cx.notify();
-        }
-    }
-
-    fn move_down(&mut self, _: &MoveDown, _window: &mut Window, cx: &mut Context<Self>) {
-        if !self.todos.is_empty() {
-            let len = self.todos.len() as isize;
-            self.selected_index = (self.selected_index as isize + 1) as usize % len as usize;
-            cx.notify();
-        }
-    }
-
-    fn toggle_complete(
-        &mut self,
-        _: &ToggleComplete,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if let Some(todo) = self.todos.get_mut(self.selected_index) {
-            todo.completed = !todo.completed;
-            cx.notify();
-        }
-    }
-
-    fn toggle_complete_at(&mut self, index: usize, cx: &mut Context<Self>) {
-        if let Some(todo) = self.todos.get_mut(index) {
-            todo.completed = !todo.completed;
-            cx.notify();
-        }
-    }
-
-    fn set_priority(&mut self, priority: Priority, cx: &mut Context<Self>) {
-        if let Some(todo) = self.todos.get_mut(self.selected_index) {
-            todo.priority = priority;
-            cx.notify();
-        }
-    }
-
-    fn set_p1(&mut self, _: &SetP1, _window: &mut Window, cx: &mut Context<Self>) {
-        self.set_priority(Priority::P1, cx);
-    }
-
-    fn set_p2(&mut self, _: &SetP2, _window: &mut Window, cx: &mut Context<Self>) {
-        self.set_priority(Priority::P2, cx);
-    }
-
-    fn set_p3(&mut self, _: &SetP3, _window: &mut Window, cx: &mut Context<Self>) {
-        self.set_priority(Priority::P3, cx);
-    }
-
-    fn set_p4(&mut self, _: &SetP4, _window: &mut Window, cx: &mut Context<Self>) {
-        self.set_priority(Priority::P4, cx);
     }
 
     fn switch_theme(&mut self, _: &SwitchTheme, window: &mut Window, cx: &mut Context<Self>) {
@@ -152,190 +73,23 @@ impl TodoApp {
     }
 }
 
-#[derive(Clone)]
-struct Todo {
-    title: SharedString,
-    completed: bool,
-    priority: Priority,
-}
-
-impl Todo {
-    fn new(title: &'static str, completed: bool) -> Self {
-        Self {
-            title: title.into(),
-            completed,
-            priority: Priority::default(),
-        }
-    }
-
-    fn with_priority(mut self, priority: Priority) -> Self {
-        self.priority = priority;
-        self
-    }
-}
-
-impl Render for TodoApp {
+impl Render for AppView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl gpui::IntoElement {
-        // Drive all rem()-based sizes from the current zoom level.
         window.set_rem_size(px(self.font_size));
 
-        let selected_index = self.selected_index;
-
-        let separator = cx.theme().muted;
-        let focus_border = cx.theme().primary;
-        let focus_bg = cx.theme().primary.opacity(0.05);
-        let completed_text_color = cx.theme().muted_foreground;
-
         div()
-            .key_context("TodoApp")
+            .key_context("App")
             .track_focus(&self.focus_handle(cx))
-            .on_action(cx.listener(TodoApp::move_up))
-            .on_action(cx.listener(TodoApp::move_down))
-            .on_action(cx.listener(TodoApp::switch_theme))
-            .on_action(cx.listener(TodoApp::toggle_complete))
-            .on_action(cx.listener(TodoApp::set_p1))
-            .on_action(cx.listener(TodoApp::set_p2))
-            .on_action(cx.listener(TodoApp::set_p3))
-            .on_action(cx.listener(TodoApp::set_p4))
-            .on_action(cx.listener(TodoApp::zoom_in))
-            .on_action(cx.listener(TodoApp::zoom_out))
-            .on_action(cx.listener(TodoApp::zoom_reset))
+            .on_action(cx.listener(AppView::switch_theme))
+            .on_action(cx.listener(AppView::zoom_in))
+            .on_action(cx.listener(AppView::zoom_out))
+            .on_action(cx.listener(AppView::zoom_reset))
             .size_full()
-            // 0.875rem = 14px at default zoom (16px rem)
             .text_size(rems(0.875))
             .text_color(cx.theme().foreground)
             .bg(cx.theme().background)
-            // 1rem padding
             .p(rems(1.0))
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .children(self.todos.iter().enumerate().map(|(i, todo)| {
-                        let is_selected = i == selected_index;
-                        let is_completed = todo.completed;
-
-                        // Circle color always reflects priority — selection shown by border only
-                        let circle_color = match todo.priority {
-                            Priority::P1 => cx.theme().danger,
-                            Priority::P2 => cx.theme().warning,
-                            Priority::P3 => cx.theme().info,
-                            Priority::P4 => cx.theme().muted_foreground,
-                        };
-
-                        // Wrapper: separator at the top (for all rows except the first),
-                        // row box painted on top of it via mt(-1) so the border aligns
-                        // flush with the separator. The row box border (primary or transparent)
-                        // paints last and covers the separator pixel when selected.
-                        div()
-                            .flex()
-                            .flex_col()
-                            // Separator: shown above every row except the first.
-                            // Keep as px(1) — physical pixel, must not scale.
-                            .when(i > 0, |el| {
-                                el.child(
-                                    div()
-                                        .h(px(1.0))
-                                        .ml(rems(0.5))
-                                        .mr(rems(0.5))
-                                        .bg(separator),
-                                )
-                            })
-                            // Row box
-                            .child(
-                                div()
-                                    .flex()
-                                    .flex_col()
-                                    .border_1()
-                                    // 0.375rem border radius
-                                    .rounded(rems(0.375))
-                                    .when(is_selected, |el| {
-                                        el.border_color(focus_border).bg(focus_bg)
-                                    })
-                                    .when(!is_selected, |el| {
-                                        el.border_color(gpui::transparent_black())
-                                    })
-                                    // 0.5rem horizontal, 0.625rem vertical padding
-                                    .px(rems(0.5))
-                                    .py(rems(0.625))
-                                    // Content: circle + text
-                                    .child(
-                                        div()
-                                            .flex()
-                                            .items_start()
-                                            .child(if is_completed {
-                                                // Completed: filled circle with checkmark
-                                                div()
-                                                    .flex_none()
-                                                    // 1.125rem circle
-                                                    .w(rems(1.125))
-                                                    .h(rems(1.125))
-                                                    .mt(rems(0.0625))
-                                                    .mr(rems(0.75))
-                                                    .rounded_full()
-                                                    .bg(circle_color)
-                                                    .cursor_pointer()
-                                                    .flex()
-                                                    .items_center()
-                                                    .justify_center()
-                                                    .on_mouse_down(
-                                                        MouseButton::Left,
-                                                        cx.listener(move |this, _, _window, cx| {
-                                                            this.toggle_complete_at(i, cx);
-                                                        }),
-                                                    )
-                                                    .child(
-                                                        div()
-                                                            .text_size(rems(0.6875))
-                                                            .line_height(gpui::relative(1.0))
-                                                            .text_color(cx.theme().background)
-                                                            .child("✓"),
-                                                    )
-                                            } else {
-                                                // Incomplete: hollow ring — outer fill (priority
-                                                // color) + inner punch-out (background color)
-                                                div()
-                                                    .flex_none()
-                                                    .w(rems(1.125))
-                                                    .h(rems(1.125))
-                                                    .mt(rems(0.0625))
-                                                    .mr(rems(0.75))
-                                                    .rounded_full()
-                                                    .cursor_pointer()
-                                                    .flex()
-                                                    .items_center()
-                                                    .justify_center()
-                                                    .bg(circle_color)
-                                                    .on_mouse_down(
-                                                        MouseButton::Left,
-                                                        cx.listener(move |this, _, _window, cx| {
-                                                            this.toggle_complete_at(i, cx);
-                                                        }),
-                                                    )
-                                                    .child(
-                                                        div()
-                                                            // 0.9375rem inner circle punch-out
-                                                            .w(rems(0.9375))
-                                                            .h(rems(0.9375))
-                                                            .rounded_full()
-                                                            .bg(cx.theme().background),
-                                                    )
-                                            })
-                                            .child(
-                                                div()
-                                                    .w_full()
-                                                    .min_w(px(0.0))
-                                                    .line_height(gpui::relative(1.4))
-                                                    .when(is_completed, |el| {
-                                                        el.line_through()
-                                                            .text_color(completed_text_color)
-                                                    })
-                                                    .child(todo.title.clone()),
-                                            ),
-                                    ),
-                            )
-                    })),
-            )
+            .child(self.todo_list.clone())
     }
 }
 
@@ -357,8 +111,12 @@ fn main() {
         Todo::new("Define next actions to create MVP todoz", false).with_priority(Priority::P3),
     ];
 
-    application().run(|cx: &mut App| {
+    application().run(|cx: &mut gpui::App| {
         gpui_component::init(cx);
+
+        use crate::todolist::actions::{
+            MoveDown, MoveUp, SetP1, SetP2, SetP3, SetP4, ToggleComplete,
+        };
 
         cx.bind_keys([
             gpui::KeyBinding::new("up", MoveUp, None),
@@ -387,7 +145,7 @@ fn main() {
         };
         cx.spawn(async move |cx| {
             cx.open_window(options, |window, cx| {
-                let view = cx.new(|cx| TodoApp::new(todos, window, cx));
+                let view = cx.new(|cx| AppView::new(todos, window, cx));
                 cx.new(|cx| Root::new(view, window, cx))
             })
             .unwrap();
@@ -399,6 +157,7 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::todolist::actions::{MoveDown, MoveUp, SetP1, SetP2, SetP3, SetP4, ToggleComplete};
 
     #[gpui::test]
     async fn test_keyboard_navigation(cx: &mut gpui::TestAppContext) {
@@ -410,14 +169,16 @@ mod tests {
             Todo::new("Add CRUD operations", false),
         ];
 
-        let app = cx.add_window(|window, cx| TodoApp::new(todos, window, cx));
+        let app = cx.add_window(|window, cx| AppView::new(todos, window, cx));
 
         _ = app.update(cx, |app, window, cx| {
-            assert_eq!(app.selected_index, 0);
-            app.move_down(&MoveDown, window, cx);
-            assert_eq!(app.selected_index, 1);
-            app.move_up(&MoveUp, window, cx);
-            assert_eq!(app.selected_index, 0);
+            app.todo_list.update(cx, |list, cx| {
+                assert_eq!(list.selected_index, 0);
+                list.move_down(&MoveDown, window, cx);
+                assert_eq!(list.selected_index, 1);
+                list.move_up(&MoveUp, window, cx);
+                assert_eq!(list.selected_index, 0);
+            });
         });
     }
 
@@ -431,26 +192,29 @@ mod tests {
             Todo::new("Task three", true),
         ];
 
-        let app = cx.add_window(|window, cx| TodoApp::new(todos, window, cx));
+        let app = cx.add_window(|window, cx| AppView::new(todos, window, cx));
 
         _ = app.update(cx, |app, window, cx| {
-            // selected_index = 0, task is incomplete → toggle to complete
-            app.toggle_complete(&ToggleComplete, window, cx);
-            assert!(app.todos[0].completed, "task 0 should be completed");
+            app.todo_list.update(cx, |list, cx| {
+                assert_eq!(list.selected_index, 0);
+                list.toggle_complete(&ToggleComplete, window, cx);
+                assert!(list.todos[0].completed, "task 0 should be completed");
 
-            // toggle again → back to incomplete
-            app.toggle_complete(&ToggleComplete, window, cx);
-            assert!(!app.todos[0].completed, "task 0 should be incomplete again");
+                list.toggle_complete(&ToggleComplete, window, cx);
+                assert!(
+                    !list.todos[0].completed,
+                    "task 0 should be incomplete again"
+                );
 
-            // move to task 2 (already complete) and toggle → incomplete
-            app.move_down(&MoveDown, window, cx);
-            app.move_down(&MoveDown, window, cx);
-            assert_eq!(app.selected_index, 2);
-            app.toggle_complete(&ToggleComplete, window, cx);
-            assert!(
-                !app.todos[2].completed,
-                "task 2 should be incomplete after toggle"
-            );
+                list.move_down(&MoveDown, window, cx);
+                list.move_down(&MoveDown, window, cx);
+                assert_eq!(list.selected_index, 2);
+                list.toggle_complete(&ToggleComplete, window, cx);
+                assert!(
+                    !list.todos[2].completed,
+                    "task 2 should be incomplete after toggle"
+                );
+            });
         });
     }
 
@@ -464,29 +228,41 @@ mod tests {
             Todo::new("Task three", false),
         ];
 
-        let app = cx.add_window(|window, cx| TodoApp::new(todos, window, cx));
+        let app = cx.add_window(|window, cx| AppView::new(todos, window, cx));
 
         _ = app.update(cx, |app, window, cx| {
-            // Default priority is P4
-            assert_eq!(app.todos[0].priority, Priority::P4);
+            let list = app.todo_list.read(cx);
+            assert_eq!(list.todos[0].priority, Priority::P4);
 
-            // Set P1 on selected (index 0)
-            app.set_p1(&SetP1, window, cx);
-            assert_eq!(app.todos[0].priority, Priority::P1);
+            app.todo_list.update(cx, |list, cx| {
+                list.set_p1(&SetP1, window, cx);
+            });
+            let list = app.todo_list.read(cx);
+            assert_eq!(list.todos[0].priority, Priority::P1);
 
-            // Move to index 1, set P2
-            app.move_down(&MoveDown, window, cx);
-            app.set_p2(&SetP2, window, cx);
-            assert_eq!(app.todos[1].priority, Priority::P2);
+            app.todo_list.update(cx, |list, _cx| {
+                list.selected_index = 1;
+            });
+            app.todo_list.update(cx, |list, cx| {
+                list.set_p2(&SetP2, window, cx);
+            });
+            let list = app.todo_list.read(cx);
+            assert_eq!(list.todos[1].priority, Priority::P2);
 
-            // Move to index 2, set P3
-            app.move_down(&MoveDown, window, cx);
-            app.set_p3(&SetP3, window, cx);
-            assert_eq!(app.todos[2].priority, Priority::P3);
+            app.todo_list.update(cx, |list, _cx| {
+                list.selected_index = 2;
+            });
+            app.todo_list.update(cx, |list, cx| {
+                list.set_p3(&SetP3, window, cx);
+            });
+            let list = app.todo_list.read(cx);
+            assert_eq!(list.todos[2].priority, Priority::P3);
 
-            // Reset index 2 back to P4
-            app.set_p4(&SetP4, window, cx);
-            assert_eq!(app.todos[2].priority, Priority::P4);
+            app.todo_list.update(cx, |list, cx| {
+                list.set_p4(&SetP4, window, cx);
+            });
+            let list = app.todo_list.read(cx);
+            assert_eq!(list.todos[2].priority, Priority::P4);
         });
     }
 
@@ -496,35 +272,28 @@ mod tests {
 
         let todos = vec![Todo::new("Task one", false)];
 
-        let app = cx.add_window(|window, cx| TodoApp::new(todos, window, cx));
+        let app = cx.add_window(|window, cx| AppView::new(todos, window, cx));
 
         _ = app.update(cx, |app, window, cx| {
-            // Default font size
             assert_eq!(app.font_size, DEFAULT_FONT_SIZE);
 
-            // Zoom in increases font size by ZOOM_STEP
             app.zoom_in(&ZoomIn, window, cx);
             assert_eq!(app.font_size, DEFAULT_FONT_SIZE + ZOOM_STEP);
 
-            // Zoom in again
             app.zoom_in(&ZoomIn, window, cx);
             assert_eq!(app.font_size, DEFAULT_FONT_SIZE + ZOOM_STEP * 2.0);
 
-            // Zoom out decreases font size by ZOOM_STEP
             app.zoom_out(&ZoomOut, window, cx);
             assert_eq!(app.font_size, DEFAULT_FONT_SIZE + ZOOM_STEP);
 
-            // Reset returns to default
             app.zoom_reset(&ZoomReset, window, cx);
             assert_eq!(app.font_size, DEFAULT_FONT_SIZE);
 
-            // Zoom out below minimum clamps at MIN_FONT_SIZE
             for _ in 0..20 {
                 app.zoom_out(&ZoomOut, window, cx);
             }
             assert_eq!(app.font_size, MIN_FONT_SIZE);
 
-            // Zoom in above maximum clamps at MAX_FONT_SIZE
             for _ in 0..20 {
                 app.zoom_in(&ZoomIn, window, cx);
             }

@@ -1,0 +1,221 @@
+use crate::todo::{Priority, Todo};
+use crate::todolist::actions::{MoveDown, MoveUp, SetP1, SetP2, SetP3, SetP4, ToggleComplete};
+use gpui::prelude::FluentBuilder;
+use gpui::{
+    App, Context, FocusHandle, Focusable, InteractiveElement, MouseButton, ParentElement, Render,
+    Styled, Window, div, px, relative, rems,
+};
+use gpui_component::ActiveTheme;
+
+pub mod actions {
+    use gpui::actions;
+    actions!(
+        todo_list,
+        [MoveUp, MoveDown, ToggleComplete, SetP1, SetP2, SetP3, SetP4]
+    );
+}
+
+pub struct TodoList {
+    pub todos: Vec<Todo>,
+    pub selected_index: usize,
+    focus_handle: FocusHandle,
+}
+
+impl Focusable for TodoList {
+    fn focus_handle(&self, _cx: &App) -> FocusHandle {
+        self.focus_handle.clone()
+    }
+}
+
+impl TodoList {
+    pub fn new(todos: Vec<Todo>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let focus_handle = cx.focus_handle();
+        window.focus(&focus_handle, cx);
+        Self {
+            todos,
+            selected_index: 0,
+            focus_handle,
+        }
+    }
+
+    pub fn move_up(&mut self, _: &MoveUp, _window: &mut Window, cx: &mut Context<Self>) {
+        if !self.todos.is_empty() {
+            let len = self.todos.len() as isize;
+            self.selected_index = (self.selected_index as isize - 1 + len) as usize % len as usize;
+            cx.notify();
+        }
+    }
+
+    pub fn move_down(&mut self, _: &MoveDown, _window: &mut Window, cx: &mut Context<Self>) {
+        if !self.todos.is_empty() {
+            let len = self.todos.len() as isize;
+            self.selected_index = (self.selected_index as isize + 1) as usize % len as usize;
+            cx.notify();
+        }
+    }
+
+    pub fn toggle_complete(
+        &mut self,
+        _: &ToggleComplete,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(todo) = self.todos.get_mut(self.selected_index) {
+            todo.completed = !todo.completed;
+            cx.notify();
+        }
+    }
+
+    pub fn toggle_complete_at(&mut self, index: usize, cx: &mut Context<Self>) {
+        if let Some(todo) = self.todos.get_mut(index) {
+            todo.completed = !todo.completed;
+            cx.notify();
+        }
+    }
+
+    fn set_priority(&mut self, priority: Priority, cx: &mut Context<Self>) {
+        if let Some(todo) = self.todos.get_mut(self.selected_index) {
+            todo.priority = priority;
+            cx.notify();
+        }
+    }
+
+    pub fn set_p1(&mut self, _: &SetP1, _window: &mut Window, cx: &mut Context<Self>) {
+        self.set_priority(Priority::P1, cx);
+    }
+
+    pub fn set_p2(&mut self, _: &SetP2, _window: &mut Window, cx: &mut Context<Self>) {
+        self.set_priority(Priority::P2, cx);
+    }
+
+    pub fn set_p3(&mut self, _: &SetP3, _window: &mut Window, cx: &mut Context<Self>) {
+        self.set_priority(Priority::P3, cx);
+    }
+
+    pub fn set_p4(&mut self, _: &SetP4, _window: &mut Window, cx: &mut Context<Self>) {
+        self.set_priority(Priority::P4, cx);
+    }
+}
+
+impl Render for TodoList {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl gpui::IntoElement {
+        let selected_index = self.selected_index;
+
+        let separator = cx.theme().muted;
+        let focus_border = cx.theme().primary;
+        let focus_bg = cx.theme().primary.opacity(0.05);
+        let completed_text_color = cx.theme().muted_foreground;
+
+        div()
+            .key_context("TodoList")
+            .track_focus(&self.focus_handle(cx))
+            .on_action(cx.listener(TodoList::move_up))
+            .on_action(cx.listener(TodoList::move_down))
+            .on_action(cx.listener(TodoList::toggle_complete))
+            .on_action(cx.listener(TodoList::set_p1))
+            .on_action(cx.listener(TodoList::set_p2))
+            .on_action(cx.listener(TodoList::set_p3))
+            .on_action(cx.listener(TodoList::set_p4))
+            .flex()
+            .flex_col()
+            .children(self.todos.iter().enumerate().map(|(i, todo)| {
+                let is_selected = i == selected_index;
+                let is_completed = todo.completed;
+
+                let circle_color = match todo.priority {
+                    Priority::P1 => cx.theme().danger,
+                    Priority::P2 => cx.theme().warning,
+                    Priority::P3 => cx.theme().info,
+                    Priority::P4 => cx.theme().muted_foreground,
+                };
+
+                div()
+                    .flex()
+                    .flex_col()
+                    .when(i > 0, |el| {
+                        el.child(div().h(px(1.0)).ml(rems(0.5)).mr(rems(0.5)).bg(separator))
+                    })
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .border_1()
+                            .rounded(rems(0.375))
+                            .when(is_selected, |el| el.border_color(focus_border).bg(focus_bg))
+                            .when(!is_selected, |el| {
+                                el.border_color(gpui::transparent_black())
+                            })
+                            .px(rems(0.5))
+                            .py(rems(0.625))
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_start()
+                                    .child(if is_completed {
+                                        div()
+                                            .flex_none()
+                                            .w(rems(1.125))
+                                            .h(rems(1.125))
+                                            .mt(rems(0.0625))
+                                            .mr(rems(0.75))
+                                            .rounded_full()
+                                            .bg(circle_color)
+                                            .cursor_pointer()
+                                            .flex()
+                                            .items_center()
+                                            .justify_center()
+                                            .on_mouse_down(
+                                                MouseButton::Left,
+                                                cx.listener(move |this, _, _window, cx| {
+                                                    this.toggle_complete_at(i, cx);
+                                                }),
+                                            )
+                                            .child(
+                                                div()
+                                                    .text_size(rems(0.6875))
+                                                    .line_height(relative(1.0))
+                                                    .text_color(cx.theme().background)
+                                                    .child("✓"),
+                                            )
+                                    } else {
+                                        div()
+                                            .flex_none()
+                                            .w(rems(1.125))
+                                            .h(rems(1.125))
+                                            .mt(rems(0.0625))
+                                            .mr(rems(0.75))
+                                            .rounded_full()
+                                            .cursor_pointer()
+                                            .flex()
+                                            .items_center()
+                                            .justify_center()
+                                            .bg(circle_color)
+                                            .on_mouse_down(
+                                                MouseButton::Left,
+                                                cx.listener(move |this, _, _window, cx| {
+                                                    this.toggle_complete_at(i, cx);
+                                                }),
+                                            )
+                                            .child(
+                                                div()
+                                                    .w(rems(0.9375))
+                                                    .h(rems(0.9375))
+                                                    .rounded_full()
+                                                    .bg(cx.theme().background),
+                                            )
+                                    })
+                                    .child(
+                                        div()
+                                            .w_full()
+                                            .min_w(px(0.0))
+                                            .line_height(relative(1.4))
+                                            .when(is_completed, |el| {
+                                                el.line_through().text_color(completed_text_color)
+                                            })
+                                            .child(todo.title.clone()),
+                                    ),
+                            ),
+                    )
+            }))
+    }
+}
