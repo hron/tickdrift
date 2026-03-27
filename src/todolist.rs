@@ -162,7 +162,7 @@ impl Render for TodoList {
                                 div()
                                     .flex()
                                     .items_start()
-                                    .child(if is_completed {
+                                    .child(
                                         div()
                                             .flex_none()
                                             .w(rems(1.125))
@@ -170,8 +170,8 @@ impl Render for TodoList {
                                             .mt(rems(0.0625))
                                             .mr(rems(0.75))
                                             .rounded_full()
-                                            .bg(circle_color)
                                             .cursor_pointer()
+                                            .bg(circle_color)
                                             .flex()
                                             .items_center()
                                             .justify_center()
@@ -181,40 +181,20 @@ impl Render for TodoList {
                                                     this.toggle_complete_at(i, cx);
                                                 }),
                                             )
-                                            .child(
+                                            .child(if is_completed {
                                                 div()
                                                     .text_size(rems(0.6875))
                                                     .line_height(relative(1.0))
                                                     .text_color(cx.theme().background)
-                                                    .child("✓"),
-                                            )
-                                    } else {
-                                        div()
-                                            .flex_none()
-                                            .w(rems(1.125))
-                                            .h(rems(1.125))
-                                            .mt(rems(0.0625))
-                                            .mr(rems(0.75))
-                                            .rounded_full()
-                                            .cursor_pointer()
-                                            .flex()
-                                            .items_center()
-                                            .justify_center()
-                                            .bg(circle_color)
-                                            .on_mouse_down(
-                                                MouseButton::Left,
-                                                cx.listener(move |this, _, _window, cx| {
-                                                    this.toggle_complete_at(i, cx);
-                                                }),
-                                            )
-                                            .child(
+                                                    .child("✓")
+                                            } else {
                                                 div()
                                                     .w(rems(0.9375))
                                                     .h(rems(0.9375))
                                                     .rounded_full()
-                                                    .bg(cx.theme().background),
-                                            )
-                                    })
+                                                    .bg(cx.theme().background)
+                                            }),
+                                    )
                                     .child(
                                         div()
                                             .w_full()
