@@ -1,7 +1,7 @@
 use crate::todo::{Priority, Todo};
-use crate::todolist::actions::{MoveDown, MoveUp, SetP1, SetP2, SetP3, SetP4, ToggleComplete};
-use crate::{AppView, DEFAULT_FONT_SIZE, MAX_FONT_SIZE, MIN_FONT_SIZE, ZOOM_STEP};
-use crate::{ZoomIn, ZoomOut, ZoomReset};
+use crate::{
+    AppView, DEFAULT_FONT_SIZE, MAX_FONT_SIZE, MIN_FONT_SIZE, ZOOM_STEP, ZoomIn, ZoomOut, ZoomReset,
+};
 
 pub fn default_todos() -> Vec<Todo> {
     vec![
@@ -14,129 +14,130 @@ pub fn default_todos() -> Vec<Todo> {
 pub fn build_test_app(
     cx: &mut gpui::TestAppContext,
     todos: Vec<Todo>,
-) -> gpui::WindowHandle<AppView> {
+) -> (gpui::Entity<AppView>, &mut gpui::VisualTestContext) {
     cx.update(|cx| gpui_component::init(cx));
-    cx.add_window(|window, cx| AppView::new(todos, window, cx))
+    cx.add_window_view(|window, cx| AppView::new(todos, window, cx))
 }
 
 #[gpui::test]
 async fn test_keyboard_navigation(cx: &mut gpui::TestAppContext) {
-    let app = build_test_app(cx, default_todos());
+    let (window, cx) = build_test_app(cx, default_todos());
+    let todo_list = window.read_with(cx, |mw, _| mw.todo_list.clone());
 
-    _ = app.update(cx, |app, window, cx| {
-        app.todo_list.update(cx, |list, cx| {
-            assert_eq!(list.selected_index, 0);
-            list.move_down(&MoveDown, window, cx);
-            assert_eq!(list.selected_index, 1);
-            list.move_up(&MoveUp, window, cx);
-            assert_eq!(list.selected_index, 0);
-        });
+    todo_list.read_with(cx, |tl, _| {
+        assert_eq!(tl.selected_index, 0);
+    });
+
+    cx.simulate_keystrokes("down");
+    todo_list.read_with(cx, |tl, _| {
+        assert_eq!(tl.selected_index, 1);
+    });
+
+    cx.simulate_keystrokes("up");
+    todo_list.read_with(cx, |tl, _| {
+        assert_eq!(tl.selected_index, 0);
     });
 }
 
 #[gpui::test]
 async fn test_toggle_complete(cx: &mut gpui::TestAppContext) {
-    let app = build_test_app(cx, vec![
+    let tasks = vec![
         Todo::new("Task one", false),
         Todo::new("Task two", false),
         Todo::new("Task three", true),
-    ]);
+    ];
+    let (window, cx) = build_test_app(cx, tasks);
+    let todo_list = window.read_with(cx, |mw, _| mw.todo_list.clone());
 
-    _ = app.update(cx, |app, window, cx| {
-        app.todo_list.update(cx, |list, cx| {
-            assert_eq!(list.selected_index, 0);
-            list.toggle_complete(&ToggleComplete, window, cx);
-            assert!(list.todos[0].completed, "task 0 should be completed");
+    let selected_ix = 0;
+    todo_list.read_with(cx, |tl, _| {
+        assert_eq!(tl.selected_index, selected_ix);
+        assert_eq!(tl.todos[selected_ix].completed, false);
+    });
 
-            list.toggle_complete(&ToggleComplete, window, cx);
-            assert!(
-                !list.todos[0].completed,
-                "task 0 should be incomplete again"
-            );
+    cx.simulate_keystrokes("e");
+    todo_list.read_with(cx, |tl, _| {
+        assert_eq!(tl.todos[selected_ix].completed, true);
+    });
 
-            list.move_down(&MoveDown, window, cx);
-            list.move_down(&MoveDown, window, cx);
-            assert_eq!(list.selected_index, 2);
-            list.toggle_complete(&ToggleComplete, window, cx);
-            assert!(
-                !list.todos[2].completed,
-                "task 2 should be incomplete after toggle"
-            );
-        });
+    cx.simulate_keystrokes("e");
+    todo_list.read_with(cx, |tl, _| {
+        assert_eq!(tl.todos[selected_ix].completed, false);
     });
 }
 
 #[gpui::test]
 async fn test_set_priority(cx: &mut gpui::TestAppContext) {
-    let app = build_test_app(cx, vec![
+    let tasks = vec![
         Todo::new("Task one", false),
         Todo::new("Task two", false),
         Todo::new("Task three", false),
-    ]);
+    ];
+    let (window, cx) = build_test_app(cx, tasks);
+    let todo_list = window.read_with(cx, |mw, _| mw.todo_list.clone());
 
-    _ = app.update(cx, |app, window, cx| {
-        let list = app.todo_list.read(cx);
-        assert_eq!(list.todos[0].priority, Priority::P4);
+    let selected_ix = 0;
 
-        app.todo_list.update(cx, |list, cx| {
-            list.set_p1(&SetP1, window, cx);
-        });
-        let list = app.todo_list.read(cx);
-        assert_eq!(list.todos[0].priority, Priority::P1);
+    todo_list.read_with(cx, |tl, _| {
+        assert_eq!(tl.selected_index, selected_ix);
+        assert_eq!(tl.todos[selected_ix].priority, Priority::P4);
+    });
 
-        app.todo_list.update(cx, |list, _cx| {
-            list.selected_index = 1;
-        });
-        app.todo_list.update(cx, |list, cx| {
-            list.set_p2(&SetP2, window, cx);
-        });
-        let list = app.todo_list.read(cx);
-        assert_eq!(list.todos[1].priority, Priority::P2);
+    cx.simulate_keystrokes("1");
+    todo_list.read_with(cx, |tl, _| {
+        assert_eq!(tl.todos[selected_ix].priority, Priority::P1);
+    });
 
-        app.todo_list.update(cx, |list, _cx| {
-            list.selected_index = 2;
-        });
-        app.todo_list.update(cx, |list, cx| {
-            list.set_p3(&SetP3, window, cx);
-        });
-        let list = app.todo_list.read(cx);
-        assert_eq!(list.todos[2].priority, Priority::P3);
+    cx.simulate_keystrokes("2");
+    todo_list.read_with(cx, |tl, _| {
+        assert_eq!(tl.todos[selected_ix].priority, Priority::P2);
+    });
 
-        app.todo_list.update(cx, |list, cx| {
-            list.set_p4(&SetP4, window, cx);
-        });
-        let list = app.todo_list.read(cx);
-        assert_eq!(list.todos[2].priority, Priority::P4);
+    cx.simulate_keystrokes("1");
+    todo_list.read_with(cx, |tl, _| {
+        assert_eq!(tl.todos[selected_ix].priority, Priority::P1);
     });
 }
 
 #[gpui::test]
 async fn test_zoom(cx: &mut gpui::TestAppContext) {
-    let app = build_test_app(cx, default_todos());
+    let (window, cx) = build_test_app(cx, default_todos());
 
-    _ = app.update(cx, |app, window, cx| {
-        assert_eq!(app.font_size, DEFAULT_FONT_SIZE);
+    window.read_with(cx, |mw, _| {
+        assert_eq!(mw.font_size, DEFAULT_FONT_SIZE);
+    });
 
-        app.zoom_in(&ZoomIn, window, cx);
-        assert_eq!(app.font_size, DEFAULT_FONT_SIZE + ZOOM_STEP);
+    cx.dispatch_action(ZoomIn);
+    window.read_with(cx, |mw, _| {
+        assert_eq!(mw.font_size, DEFAULT_FONT_SIZE + ZOOM_STEP);
+    });
 
-        app.zoom_in(&ZoomIn, window, cx);
-        assert_eq!(app.font_size, DEFAULT_FONT_SIZE + ZOOM_STEP * 2.0);
+    cx.dispatch_action(ZoomIn);
+    window.read_with(cx, |mw, _| {
+        assert_eq!(mw.font_size, DEFAULT_FONT_SIZE + ZOOM_STEP * 2.0);
+    });
 
-        app.zoom_out(&ZoomOut, window, cx);
-        assert_eq!(app.font_size, DEFAULT_FONT_SIZE + ZOOM_STEP);
+    cx.dispatch_action(ZoomOut);
+    window.read_with(cx, |mw, _| {
+        assert_eq!(mw.font_size, DEFAULT_FONT_SIZE + ZOOM_STEP);
+    });
 
-        app.zoom_reset(&ZoomReset, window, cx);
-        assert_eq!(app.font_size, DEFAULT_FONT_SIZE);
+    cx.dispatch_action(ZoomReset);
+    window.read_with(cx, |mw, _| {
+        assert_eq!(mw.font_size, DEFAULT_FONT_SIZE);
+    });
 
-        for _ in 0..20 {
-            app.zoom_out(&ZoomOut, window, cx);
-        }
-        assert_eq!(app.font_size, MIN_FONT_SIZE);
+    for _ in 0..20 {
+        cx.dispatch_action(ZoomOut);
+    }
+    window.read_with(cx, |mw, _| {
+        assert_eq!(mw.font_size, MIN_FONT_SIZE);
+    });
 
-        for _ in 0..20 {
-            app.zoom_in(&ZoomIn, window, cx);
-        }
-        assert_eq!(app.font_size, MAX_FONT_SIZE);
+    for _ in 0..20 {
+        cx.dispatch_action(ZoomIn);
+    }
+    window.read_with(cx, |mw, _| {
+        assert_eq!(mw.font_size, MAX_FONT_SIZE);
     });
 }
