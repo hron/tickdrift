@@ -39,6 +39,15 @@ impl AppView {
         let sub = window.observe_window_appearance(|window, cx| {
             Theme::sync_system_appearance(Some(window), cx);
         });
+
+        cx.bind_keys([
+            gpui::KeyBinding::new("ctrl-alt-t", SwitchTheme, None),
+            gpui::KeyBinding::new("ctrl-=", ZoomIn, None),
+            gpui::KeyBinding::new("ctrl-+", ZoomIn, None),
+            gpui::KeyBinding::new("ctrl--", ZoomOut, None),
+            gpui::KeyBinding::new("ctrl-0", ZoomReset, None),
+        ]);
+
         let todo_list = cx.new(|cx| TodoList::new(todos, window, cx));
         Self {
             todo_list,
@@ -113,25 +122,6 @@ fn main() {
 
     application().run(|cx: &mut gpui::App| {
         gpui_component::init(cx);
-
-        use crate::todolist::actions::{
-            MoveDown, MoveUp, SetP1, SetP2, SetP3, SetP4, ToggleComplete,
-        };
-
-        cx.bind_keys([
-            gpui::KeyBinding::new("up", MoveUp, None),
-            gpui::KeyBinding::new("down", MoveDown, None),
-            gpui::KeyBinding::new("ctrl-alt-t", SwitchTheme, None),
-            gpui::KeyBinding::new("e", ToggleComplete, None),
-            gpui::KeyBinding::new("1", SetP1, None),
-            gpui::KeyBinding::new("2", SetP2, None),
-            gpui::KeyBinding::new("3", SetP3, None),
-            gpui::KeyBinding::new("4", SetP4, None),
-            gpui::KeyBinding::new("ctrl-=", ZoomIn, None),
-            gpui::KeyBinding::new("ctrl-+", ZoomIn, None),
-            gpui::KeyBinding::new("ctrl--", ZoomOut, None),
-            gpui::KeyBinding::new("ctrl-0", ZoomReset, None),
-        ]);
 
         let bounds = gpui::Bounds::centered(None, size(px(400.0), px(600.0)), cx);
         let options = WindowOptions {

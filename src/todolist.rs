@@ -31,6 +31,17 @@ impl TodoList {
     pub fn new(todos: Vec<Todo>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let focus_handle = cx.focus_handle();
         window.focus(&focus_handle, cx);
+
+        cx.bind_keys([
+            gpui::KeyBinding::new("up", MoveUp, None),
+            gpui::KeyBinding::new("down", MoveDown, None),
+            gpui::KeyBinding::new("e", ToggleComplete, None),
+            gpui::KeyBinding::new("1", SetP1, None),
+            gpui::KeyBinding::new("2", SetP2, None),
+            gpui::KeyBinding::new("3", SetP3, None),
+            gpui::KeyBinding::new("4", SetP4, None),
+        ]);
+
         Self {
             todos,
             selected_index: 0,
