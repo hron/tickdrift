@@ -149,9 +149,13 @@ mod tests {
     use super::*;
     use crate::todolist::actions::{MoveDown, MoveUp, SetP1, SetP2, SetP3, SetP4, ToggleComplete};
 
+    fn setup(cx: &mut gpui::TestAppContext) {
+        cx.update(|cx| gpui_component::init(cx));
+    }
+
     #[gpui::test]
     async fn test_keyboard_navigation(cx: &mut gpui::TestAppContext) {
-        cx.update(|cx| gpui_component::init(cx));
+        setup(cx);
 
         let todos = vec![
             Todo::new("Learn Rust", false),
@@ -174,7 +178,7 @@ mod tests {
 
     #[gpui::test]
     async fn test_toggle_complete(cx: &mut gpui::TestAppContext) {
-        cx.update(|cx| gpui_component::init(cx));
+        setup(cx);
 
         let todos = vec![
             Todo::new("Task one", false),
@@ -210,7 +214,7 @@ mod tests {
 
     #[gpui::test]
     async fn test_set_priority(cx: &mut gpui::TestAppContext) {
-        cx.update(|cx| gpui_component::init(cx));
+        setup(cx);
 
         let todos = vec![
             Todo::new("Task one", false),
@@ -258,7 +262,7 @@ mod tests {
 
     #[gpui::test]
     async fn test_zoom(cx: &mut gpui::TestAppContext) {
-        cx.update(|cx| gpui_component::init(cx));
+        setup(cx);
 
         let todos = vec![Todo::new("Task one", false)];
 
