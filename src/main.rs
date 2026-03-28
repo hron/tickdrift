@@ -1,5 +1,5 @@
 mod todo;
-mod todolist;
+mod todo_list_view;
 
 use gpui::{
     AppContext, Context, FocusHandle, Focusable, InteractiveElement, ParentElement, Render, Styled,
@@ -10,7 +10,7 @@ use gpui_component::{ActiveTheme, Root, ThemeMode};
 use gpui_platform::application;
 
 use crate::todo::{Priority, Todo};
-use crate::todolist::TodoList;
+use crate::todo_list_view::TodoListView;
 
 actions!(todo_app, [SwitchTheme, ZoomIn, ZoomOut, ZoomReset,]);
 
@@ -20,7 +20,7 @@ const MAX_FONT_SIZE: f32 = 32.0;
 const ZOOM_STEP: f32 = 2.0;
 
 struct AppView {
-    todo_list: gpui::Entity<TodoList>,
+    todo_list: gpui::Entity<TodoListView>,
     focus_handle: FocusHandle,
     font_size: f32,
     _subscriptions: Vec<gpui::Subscription>,
@@ -48,7 +48,7 @@ impl AppView {
             gpui::KeyBinding::new("ctrl-0", ZoomReset, None),
         ]);
 
-        let todo_list = cx.new(|cx| TodoList::new(todos, window, cx));
+        let todo_list = cx.new(|cx| TodoListView::new(todos, window, cx));
         Self {
             todo_list,
             focus_handle,

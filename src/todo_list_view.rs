@@ -1,5 +1,7 @@
 use crate::todo::{Priority, Todo};
-use crate::todolist::actions::{MoveDown, MoveUp, SetP1, SetP2, SetP3, SetP4, ToggleComplete};
+use crate::todo_list_view::actions::{
+    MoveDown, MoveUp, SetP1, SetP2, SetP3, SetP4, ToggleComplete,
+};
 use gpui::prelude::FluentBuilder;
 use gpui::{
     App, Context, FocusHandle, Focusable, InteractiveElement, MouseButton, ParentElement, Render,
@@ -15,19 +17,19 @@ pub mod actions {
     );
 }
 
-pub struct TodoList {
+pub struct TodoListView {
     pub todos: Vec<Todo>,
     pub selected_index: usize,
     focus_handle: FocusHandle,
 }
 
-impl Focusable for TodoList {
+impl Focusable for TodoListView {
     fn focus_handle(&self, _cx: &App) -> FocusHandle {
         self.focus_handle.clone()
     }
 }
 
-impl TodoList {
+impl TodoListView {
     pub fn new(todos: Vec<Todo>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let focus_handle = cx.focus_handle();
         window.focus(&focus_handle, cx);
@@ -108,7 +110,7 @@ impl TodoList {
     }
 }
 
-impl Render for TodoList {
+impl Render for TodoListView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl gpui::IntoElement {
         let selected_index = self.selected_index;
 
@@ -120,13 +122,13 @@ impl Render for TodoList {
         div()
             .key_context("TodoList")
             .track_focus(&self.focus_handle(cx))
-            .on_action(cx.listener(TodoList::move_up))
-            .on_action(cx.listener(TodoList::move_down))
-            .on_action(cx.listener(TodoList::toggle_complete))
-            .on_action(cx.listener(TodoList::set_p1))
-            .on_action(cx.listener(TodoList::set_p2))
-            .on_action(cx.listener(TodoList::set_p3))
-            .on_action(cx.listener(TodoList::set_p4))
+            .on_action(cx.listener(TodoListView::move_up))
+            .on_action(cx.listener(TodoListView::move_down))
+            .on_action(cx.listener(TodoListView::toggle_complete))
+            .on_action(cx.listener(TodoListView::set_p1))
+            .on_action(cx.listener(TodoListView::set_p2))
+            .on_action(cx.listener(TodoListView::set_p3))
+            .on_action(cx.listener(TodoListView::set_p4))
             .flex()
             .flex_col()
             .children(self.todos.iter().enumerate().map(|(i, todo)| {

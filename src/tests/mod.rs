@@ -1,4 +1,4 @@
-use crate::todo::{Priority, Todo};
+use crate::todo::Todo;
 use crate::{
     AppView, DEFAULT_FONT_SIZE, MAX_FONT_SIZE, MIN_FONT_SIZE, ZOOM_STEP, ZoomIn, ZoomOut, ZoomReset,
 };
