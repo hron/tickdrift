@@ -1,12 +1,12 @@
 use gpui::{
-    AppContext, Context, FocusHandle, Focusable, InteractiveElement, ParentElement, Render, Styled,
-    Window, actions, div, px, rems,
+    actions, div, px, rems, AppContext, Context, FocusHandle, Focusable, InteractiveElement,
+    ParentElement, Render, Styled, Window,
 };
 use gpui_component::theme::Theme;
 use gpui_component::{ActiveTheme, ThemeMode};
 
-use crate::todo::Todo;
-use crate::todo_list_view::TodoListView;
+use crate::task::Task;
+use crate::task_list::TaskList;
 
 actions!(todoz, [SwitchTheme, ZoomIn, ZoomOut, ZoomReset,]);
 
@@ -16,7 +16,7 @@ pub(crate) const MAX_FONT_SIZE: f32 = 32.0;
 pub(crate) const ZOOM_STEP: f32 = 2.0;
 
 pub(crate) struct Todoz {
-    pub(crate) todo_list: gpui::Entity<TodoListView>,
+    pub(crate) task_list: gpui::Entity<TaskList>,
     focus_handle: FocusHandle,
     pub(crate) font_size: f32,
     _subscriptions: Vec<gpui::Subscription>,
@@ -29,7 +29,7 @@ impl Focusable for Todoz {
 }
 
 impl Todoz {
-    pub(crate) fn new(todos: Vec<Todo>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub(crate) fn new(todos: Vec<Task>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let focus_handle = cx.focus_handle();
         window.focus(&focus_handle, cx);
         let sub = window.observe_window_appearance(|window, cx| {
@@ -44,9 +44,9 @@ impl Todoz {
             gpui::KeyBinding::new("ctrl-0", ZoomReset, None),
         ]);
 
-        let todo_list = cx.new(|cx| TodoListView::new(todos, window, cx));
+        let task_list = cx.new(|cx| TaskList::new(todos, window, cx));
         Self {
-            todo_list,
+            task_list,
             focus_handle,
             font_size: DEFAULT_FONT_SIZE,
             _subscriptions: vec![sub],
@@ -94,6 +94,6 @@ impl Render for Todoz {
             .text_color(cx.theme().foreground)
             .bg(cx.theme().background)
             .p(rems(1.0))
-            .child(self.todo_list.clone())
+            .child(self.task_list.clone())
     }
 }

@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests;
-mod todo;
-mod todo_list_view;
+mod task;
+mod task_list;
 mod todoz;
 
 use gpui::{AppContext, TitlebarOptions, WindowOptions, px, size};
@@ -9,24 +9,24 @@ use gpui_component::Root;
 use gpui_platform::application;
 use todoz::Todoz;
 
-use crate::todo::{Priority, Todo};
+use crate::task::{Priority, Task};
 
 fn main() {
     let todos = vec![
-        Todo::new(
+        Task::new(
             "Setup a mechanism to test gpui with screenshots for AI and myself",
             false,
         )
         .with_priority(Priority::P1),
-        Todo::new(
+        Task::new(
             "Refactor the codebase, extract colors and assign names",
             true,
         ),
-        Todo::new("Improve the styles of todo list in todoz", true).with_priority(Priority::P2),
-        Todo::new("Create git repo for todoz", false).with_priority(Priority::P3),
-        Todo::new("Add mouse on hover handling to the tasks list", true),
-        Todo::new("Implement (complete todo) keyboard shortcut", false).with_priority(Priority::P1),
-        Todo::new("Define next actions to create MVP todoz", false).with_priority(Priority::P3),
+        Task::new("Improve the styles of todo list in todoz", true).with_priority(Priority::P2),
+        Task::new("Create git repo for todoz", false).with_priority(Priority::P3),
+        Task::new("Add mouse on hover handling to the tasks list", true),
+        Task::new("Implement (complete todo) keyboard shortcut", false).with_priority(Priority::P1),
+        Task::new("Define next actions to create MVP todoz", false).with_priority(Priority::P3),
     ];
 
     application().run(|cx: &mut gpui::App| {

@@ -1,19 +1,19 @@
-use crate::todo::Todo;
+use crate::task::Task;
 use crate::todoz::{
     DEFAULT_FONT_SIZE, MAX_FONT_SIZE, MIN_FONT_SIZE, Todoz, ZOOM_STEP, ZoomIn, ZoomOut, ZoomReset,
 };
 
-pub fn default_todos() -> Vec<Todo> {
+pub fn default_todos() -> Vec<Task> {
     vec![
-        Todo::new("Learn Rust", false),
-        Todo::new("Build a todo app", true),
-        Todo::new("Add CRUD operations", false),
+        Task::new("Learn Rust", false),
+        Task::new("Build a todo app", true),
+        Task::new("Add CRUD operations", false),
     ]
 }
 
 pub fn build_test_app(
     cx: &mut gpui::TestAppContext,
-    todos: Vec<Todo>,
+    todos: Vec<Task>,
 ) -> (gpui::Entity<Todoz>, &mut gpui::VisualTestContext) {
     cx.update(|cx| gpui_component::init(cx));
     cx.add_window_view(|window, cx| Todoz::new(todos, window, cx))
