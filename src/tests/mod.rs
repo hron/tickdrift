@@ -1,6 +1,6 @@
 use crate::todo::Todo;
-use crate::{
-    AppView, DEFAULT_FONT_SIZE, MAX_FONT_SIZE, MIN_FONT_SIZE, ZOOM_STEP, ZoomIn, ZoomOut, ZoomReset,
+use crate::todoz::{
+    DEFAULT_FONT_SIZE, MAX_FONT_SIZE, MIN_FONT_SIZE, Todoz, ZOOM_STEP, ZoomIn, ZoomOut, ZoomReset,
 };
 
 pub fn default_todos() -> Vec<Todo> {
@@ -14,9 +14,9 @@ pub fn default_todos() -> Vec<Todo> {
 pub fn build_test_app(
     cx: &mut gpui::TestAppContext,
     todos: Vec<Todo>,
-) -> (gpui::Entity<AppView>, &mut gpui::VisualTestContext) {
+) -> (gpui::Entity<Todoz>, &mut gpui::VisualTestContext) {
     cx.update(|cx| gpui_component::init(cx));
-    cx.add_window_view(|window, cx| AppView::new(todos, window, cx))
+    cx.add_window_view(|window, cx| Todoz::new(todos, window, cx))
 }
 
 #[gpui::test]
