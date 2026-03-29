@@ -2,6 +2,8 @@ use crate::task::Task;
 use crate::todoz::{
     DEFAULT_FONT_SIZE, MAX_FONT_SIZE, MIN_FONT_SIZE, Todoz, ZOOM_STEP, ZoomIn, ZoomOut, ZoomReset,
 };
+use gpui::{AppContext as _, Entity, VisualTestContext};
+use gpui_component::Root;
 
 pub fn default_todos() -> Vec<Task> {
     vec![
@@ -14,9 +16,25 @@ pub fn default_todos() -> Vec<Task> {
 pub fn build_test_app(
     cx: &mut gpui::TestAppContext,
     todos: Vec<Task>,
-) -> (gpui::Entity<Todoz>, &mut gpui::VisualTestContext) {
+) -> (Entity<Todoz>, &mut VisualTestContext) {
     cx.update(|cx| gpui_component::init(cx));
-    cx.add_window_view(|window, cx| Todoz::new(todos, window, cx))
+
+    let window = cx.update(|cx| {
+        cx.open_window(gpui::WindowOptions::default(), |window, cx| {
+            let view = cx.new(|cx| Todoz::new(todos, window, cx));
+            cx.new(|cx| Root::new(view, window, cx))
+        })
+        .unwrap()
+    });
+
+    let cx = VisualTestContext::from_window(window.into(), cx).into_mut();
+    cx.run_until_parked();
+
+    let todoz_view = window
+        .read_with(cx, |mw, _| mw.view().clone().downcast::<Todoz>().unwrap())
+        .unwrap();
+
+    (todoz_view, cx)
 }
 
 #[gpui::test]

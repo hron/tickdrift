@@ -1,6 +1,6 @@
 use gpui::{
-    actions, div, px, rems, AppContext, Context, FocusHandle, Focusable, InteractiveElement,
-    ParentElement, Render, Styled, Window,
+    AppContext, Context, FocusHandle, Focusable, InteractiveElement, ParentElement, Render, Styled,
+    Window, actions, div, px, rems,
 };
 use gpui_component::theme::Theme;
 use gpui_component::{ActiveTheme, ThemeMode};

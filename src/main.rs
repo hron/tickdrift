@@ -1,7 +1,7 @@
-#[cfg(test)]
-mod tests;
 mod task;
 mod task_list;
+#[cfg(test)]
+mod tests;
 mod todoz;
 
 use gpui::{AppContext, TitlebarOptions, WindowOptions, px, size};
