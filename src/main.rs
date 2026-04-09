@@ -1,15 +1,15 @@
-mod models;
-mod task_list;
+mod task;
+mod task_list_view;
 #[cfg(test)]
 mod tests;
-mod todoz;
+mod tickdrift;
 
 use gpui::{AppContext, TitlebarOptions, WindowOptions, px, size};
 use gpui_component::Root;
 use gpui_platform::application;
-use todoz::Todoz;
+use tickdrift::Tickdrift;
 
-use crate::models::{Priority, Task};
+use crate::task::{Priority, Task};
 
 fn main() {
     let todos = vec![
@@ -22,11 +22,11 @@ fn main() {
             "Refactor the codebase, extract colors and assign names",
             true,
         ),
-        Task::new("Improve the styles of todo list in todoz", true).with_priority(Priority::P2),
-        Task::new("Create git repo for todoz", false).with_priority(Priority::P3),
+        Task::new("Improve the styles of todo list in tickdrift", true).with_priority(Priority::P2),
+        Task::new("Create git repo for tickdrift", false).with_priority(Priority::P3),
         Task::new("Add mouse on hover handling to the tasks list", true),
         Task::new("Implement (complete todo) keyboard shortcut", false).with_priority(Priority::P1),
-        Task::new("Define next actions to create MVP todoz", false).with_priority(Priority::P3),
+        Task::new("Define next actions to create MVP tickdrift", false).with_priority(Priority::P3),
     ];
 
     application().run(|cx: &mut gpui::App| {
@@ -36,15 +36,15 @@ fn main() {
         let options = WindowOptions {
             window_bounds: Some(gpui::WindowBounds::Windowed(bounds)),
             titlebar: Some(TitlebarOptions {
-                title: Some("Todoz".into()),
+                title: Some("Tickdrift".into()),
                 ..Default::default()
             }),
-            app_id: Some("todoz".to_string()),
+            app_id: Some("tickdrift".to_string()),
             ..Default::default()
         };
         cx.spawn(async move |cx| {
             cx.open_window(options, |window, cx| {
-                let view = cx.new(|cx| Todoz::new(todos, window, cx));
+                let view = cx.new(|cx| Tickdrift::new(todos, window, cx));
                 cx.new(|cx| Root::new(view, window, cx))
             })
             .unwrap();

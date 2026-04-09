@@ -1,6 +1,7 @@
-use crate::models::Task;
-use crate::todoz::{
-    DEFAULT_FONT_SIZE, MAX_FONT_SIZE, MIN_FONT_SIZE, Todoz, ZOOM_STEP, ZoomIn, ZoomOut, ZoomReset,
+use crate::task::Task;
+use crate::tickdrift::{
+    DEFAULT_FONT_SIZE, MAX_FONT_SIZE, MIN_FONT_SIZE, Tickdrift, ZOOM_STEP, ZoomIn, ZoomOut,
+    ZoomReset,
 };
 use gpui::{AppContext as _, Entity, VisualTestContext};
 use gpui_component::Root;
@@ -16,12 +17,12 @@ pub fn default_todos() -> Vec<Task> {
 pub fn build_test_app(
     cx: &mut gpui::TestAppContext,
     todos: Vec<Task>,
-) -> (Entity<Todoz>, &mut VisualTestContext) {
+) -> (Entity<Tickdrift>, &mut VisualTestContext) {
     cx.update(|cx| gpui_component::init(cx));
 
     let window = cx.update(|cx| {
         cx.open_window(gpui::WindowOptions::default(), |window, cx| {
-            let view = cx.new(|cx| Todoz::new(todos, window, cx));
+            let view = cx.new(|cx| Tickdrift::new(todos, window, cx));
             cx.new(|cx| Root::new(view, window, cx))
         })
         .unwrap()
@@ -30,11 +31,13 @@ pub fn build_test_app(
     let cx = VisualTestContext::from_window(window.into(), cx).into_mut();
     cx.run_until_parked();
 
-    let todoz_view = window
-        .read_with(cx, |mw, _| mw.view().clone().downcast::<Todoz>().unwrap())
+    let tickdrift_view = window
+        .read_with(cx, |mw, _| {
+            mw.view().clone().downcast::<Tickdrift>().unwrap()
+        })
         .unwrap();
 
-    (todoz_view, cx)
+    (tickdrift_view, cx)
 }
 
 #[gpui::test]

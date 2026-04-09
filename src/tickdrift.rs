@@ -5,30 +5,30 @@ use gpui::{
 use gpui_component::theme::Theme;
 use gpui_component::{ActiveTheme, ThemeMode};
 
-use crate::models::Task;
-use crate::task_list::TaskList;
+use crate::task::Task;
+use crate::task_list_view::TaskList;
 
-actions!(todoz, [SwitchTheme, ZoomIn, ZoomOut, ZoomReset,]);
+actions!(tickdrift, [SwitchTheme, ZoomIn, ZoomOut, ZoomReset,]);
 
 pub(crate) const DEFAULT_FONT_SIZE: f32 = 16.0;
 pub(crate) const MIN_FONT_SIZE: f32 = 8.0;
 pub(crate) const MAX_FONT_SIZE: f32 = 32.0;
 pub(crate) const ZOOM_STEP: f32 = 2.0;
 
-pub(crate) struct Todoz {
+pub(crate) struct Tickdrift {
     pub(crate) task_list: gpui::Entity<TaskList>,
     focus_handle: FocusHandle,
     pub(crate) font_size: f32,
     _subscriptions: Vec<gpui::Subscription>,
 }
 
-impl Focusable for Todoz {
+impl Focusable for Tickdrift {
     fn focus_handle(&self, _cx: &gpui::App) -> FocusHandle {
         self.focus_handle.clone()
     }
 }
 
-impl Todoz {
+impl Tickdrift {
     pub(crate) fn new(todos: Vec<Task>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let focus_handle = cx.focus_handle();
         window.focus(&focus_handle, cx);
@@ -78,17 +78,17 @@ impl Todoz {
     }
 }
 
-impl Render for Todoz {
+impl Render for Tickdrift {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl gpui::IntoElement {
         window.set_rem_size(px(self.font_size));
 
         div()
             .key_context("App")
             .track_focus(&self.focus_handle(cx))
-            .on_action(cx.listener(Todoz::switch_theme))
-            .on_action(cx.listener(Todoz::zoom_in))
-            .on_action(cx.listener(Todoz::zoom_out))
-            .on_action(cx.listener(Todoz::zoom_reset))
+            .on_action(cx.listener(Tickdrift::switch_theme))
+            .on_action(cx.listener(Tickdrift::zoom_in))
+            .on_action(cx.listener(Tickdrift::zoom_out))
+            .on_action(cx.listener(Tickdrift::zoom_reset))
             .size_full()
             .text_size(rems(0.875))
             .text_color(cx.theme().foreground)
