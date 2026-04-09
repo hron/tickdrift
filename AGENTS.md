@@ -1,4 +1,4 @@
-# Todoz - Rust Desktop App
+# Tickdrift - Rust Desktop App
 
 ## Goal
 
@@ -85,7 +85,7 @@ the headless sway workflow. Do NOT skip this. Do NOT rely on `cargo build` alone
 ### Step 1: Teardown any previous instances
 
 ```bash
-kill $(pgrep -f "target/debug/todoz") 2>/dev/null
+kill $(pgrep -f "target/debug/tickdrift") 2>/dev/null
 kill $(pgrep -x sway) 2>/dev/null
 sleep 1
 ```
@@ -96,7 +96,7 @@ sleep 1
 
 **Must use a sway config that enables floating windows** — otherwise sway tiles the window
 to fill the full 1280x720 framebuffer, ignoring the app's requested size.
-The app sets `app_id = "todoz"` in `WindowOptions` so sway can match it.
+The app sets `app_id = "tickdrift"` in `WindowOptions` so sway can match it.
 
 ```bash
 mkdir -p /tmp/ui-test
@@ -116,7 +116,7 @@ ls /tmp/ui-test/wayland-1   # socket must exist before continuing
 ```bash
 cargo build
 XDG_RUNTIME_DIR=/tmp/ui-test WAYLAND_DISPLAY=wayland-1 \
-  ./target/debug/todoz > /tmp/ui-test/app.log 2>&1 &
+  ./target/debug/tickdrift > /tmp/ui-test/app.log 2>&1 &
 sleep 3
 ```
 
@@ -207,14 +207,14 @@ changes correctly. It is the authoritative verification for navigation logic.
 ### Step 7: Teardown
 
 ```bash
-kill $(pgrep -f "target/debug/todoz") 2>/dev/null
+kill $(pgrep -f "target/debug/tickdrift") 2>/dev/null
 kill $(pgrep -x sway) 2>/dev/null
 ```
 
 ## Project Structure
 
 ```
-todoz/
+tickdrift/
 ├── Cargo.toml              # gpui dependencies
 ├── src/
 │   └── main.rs            # Main application and tests

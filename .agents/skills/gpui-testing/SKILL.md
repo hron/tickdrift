@@ -295,7 +295,7 @@ ls /tmp/ui-test/wayland-1  # socket must exist
 
 ```bash
 XDG_RUNTIME_DIR=/tmp/ui-test WAYLAND_DISPLAY=wayland-1 \
-  ./target/debug/todoz > /tmp/ui-test/app.log 2>&1 &
+  ./target/debug/tickdrift > /tmp/ui-test/app.log 2>&1 &
 sleep 3  # wait for first frame to render
 ```
 
@@ -344,7 +344,7 @@ assert_color(640, 66, 0xf9f9f9)
 ### Teardown
 
 ```bash
-kill $(pgrep -f "target/debug/todoz") 2>/dev/null
+kill $(pgrep -f "target/debug/tickdrift") 2>/dev/null
 kill $(pgrep -x sway) 2>/dev/null
 ```
 
