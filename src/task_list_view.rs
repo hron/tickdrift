@@ -249,13 +249,6 @@ impl Render for TaskList {
         let selected_index = self.selected_index;
         let is_editing = self.is_editing;
 
-        let separator = cx.theme().muted;
-        let focus_border = cx.theme().primary;
-        let focus_bg = cx.theme().primary.opacity(0.05);
-        let completed_text_color = cx.theme().muted_foreground;
-        let edit_bg = cx.theme().background;
-        let edit_border = cx.theme().primary;
-
         let key_ctx = if self.is_editing {
             "TaskList editing"
         } else {
@@ -282,27 +275,18 @@ impl Render for TaskList {
             .children(self.todos.iter().enumerate().map(|(i, todo)| {
                 let is_selected = i == selected_index;
                 let is_row_editing = is_editing && i == selected_index;
-                let is_completed = todo.completed;
-
-                let circle_color = match todo.priority {
-                    Priority::P1 => cx.theme().danger,
-                    Priority::P2 => cx.theme().warning,
-                    Priority::P3 => cx.theme().info,
-                    Priority::P4 => cx.theme().muted_foreground,
-                };
-
-                let priority_label = match todo.priority {
-                    Priority::P1 => "P1",
-                    Priority::P2 => "P2",
-                    Priority::P3 => "P3",
-                    Priority::P4 => "",
-                };
 
                 div()
                     .flex()
                     .flex_col()
                     .when(i > 0, |el| {
-                        el.child(div().h(px(1.0)).ml(rems(0.5)).mr(rems(0.5)).bg(separator))
+                        el.child(
+                            div()
+                                .h(px(1.0))
+                                .ml(rems(0.5))
+                                .mr(rems(0.5))
+                                .bg(cx.theme().muted),
+                        )
                     })
                     .child(if is_row_editing {
                         // ── Inline edit panel ──────────────────────────────
@@ -315,16 +299,16 @@ impl Render for TaskList {
 
                         v_flex()
                             .border_2()
-                            .border_color(edit_border)
+                            .border_color(cx.theme().primary)
                             .rounded(rems(0.375))
-                            .bg(edit_bg)
+                            .bg(cx.theme().background)
                             .my(rems(0.25))
                             .p(rems(0.75))
                             .gap(rems(0.25))
                             // Title input row
                             .child(Input::new(&edit_input).appearance(false))
                             // Separator between title and toolbar
-                            .child(div().h(px(1.0)).bg(separator))
+                            .child(div().h(px(1.0)).bg(cx.theme().muted))
                             // Toolbar row (Date, Priority badge, Labels, Deadline, …)
                             .child(
                                 h_flex()
@@ -337,7 +321,7 @@ impl Render for TaskList {
                                             .icon(IconName::Calendar)
                                             .label("Date"),
                                     )
-                                    .when(!priority_label.is_empty(), |el| {
+                                    .when(!priority_label(todo).is_empty(), |el| {
                                         el.child(
                                             Button::new("edit-priority").outline().xsmall().child(
                                                 h_flex()
@@ -348,9 +332,9 @@ impl Render for TaskList {
                                                             .w(rems(0.5))
                                                             .h(rems(0.5))
                                                             .rounded_full()
-                                                            .bg(circle_color),
+                                                            .bg(circle_color(cx, todo)),
                                                     )
-                                                    .child(priority_label),
+                                                    .child(priority_label(todo)),
                                             ),
                                         )
                                     })
@@ -368,7 +352,7 @@ impl Render for TaskList {
                                     ),
                             )
                             // Separator between toolbar and footer
-                            .child(div().h(px(1.0)).bg(separator))
+                            .child(div().h(px(1.0)).bg(cx.theme().muted))
                             // Footer row: Cancel + Save
                             .child(
                                 h_flex()
@@ -414,7 +398,10 @@ impl Render for TaskList {
                             .flex_col()
                             .border_1()
                             .rounded(rems(0.375))
-                            .when(is_selected, |el| el.border_color(focus_border).bg(focus_bg))
+                            .when(is_selected, |el| {
+                                el.border_color(cx.theme().primary)
+                                    .bg(cx.theme().primary.opacity(0.05))
+                            })
                             .when(!is_selected, |el| {
                                 el.border_color(gpui::transparent_black())
                             })
@@ -433,7 +420,7 @@ impl Render for TaskList {
                                             .mr(rems(0.75))
                                             .rounded_full()
                                             .cursor_pointer()
-                                            .bg(circle_color)
+                                            .bg(circle_color(cx, todo))
                                             .flex()
                                             .items_center()
                                             .justify_center()
@@ -443,7 +430,7 @@ impl Render for TaskList {
                                                     this.toggle_complete_at(i, cx);
                                                 }),
                                             )
-                                            .child(if is_completed {
+                                            .child(if todo.completed {
                                                 div()
                                                     .text_size(rems(0.6875))
                                                     .line_height(relative(1.0))
@@ -462,8 +449,9 @@ impl Render for TaskList {
                                             .w_full()
                                             .min_w(px(0.0))
                                             .line_height(relative(1.4))
-                                            .when(is_completed, |el| {
-                                                el.line_through().text_color(completed_text_color)
+                                            .when(todo.completed, |el| {
+                                                el.line_through()
+                                                    .text_color(cx.theme().muted_foreground)
                                             })
                                             .child(todo.title.clone()),
                                     ),
@@ -471,6 +459,25 @@ impl Render for TaskList {
                             .into_any_element()
                     })
             }))
+    }
+}
+
+fn priority_label(todo: &Task) -> String {
+    let p = match todo.priority {
+        Priority::P1 => "P1",
+        Priority::P2 => "P2",
+        Priority::P3 => "P3",
+        Priority::P4 => "",
+    };
+    p.to_string()
+}
+
+fn circle_color(cx: &mut Context<'_, TaskList>, todo: &Task) -> gpui::Hsla {
+    match todo.priority {
+        Priority::P1 => cx.theme().danger,
+        Priority::P2 => cx.theme().warning,
+        Priority::P3 => cx.theme().info,
+        Priority::P4 => cx.theme().muted_foreground,
     }
 }
 
