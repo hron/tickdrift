@@ -1,4 +1,4 @@
-use crate::task::{Priority, Task};
+use crate::models::{Priority, Task};
 use crate::task_list::actions::{
     MoveDown, MoveEditDown, MoveEditUp, MoveUp, SaveEdit, SetP1, SetP2, SetP3, SetP4, StartEditing,
     StopEditing, ToggleComplete,
@@ -477,7 +477,7 @@ impl Render for TaskList {
 #[cfg(test)]
 mod tests {
     use crate::{
-        task::{Priority, Task},
+        models::{Priority, Task},
         task_list::actions::{MoveEditDown, MoveEditUp, SaveEdit, StartEditing, StopEditing},
         tests::{build_test_app, default_todos},
     };

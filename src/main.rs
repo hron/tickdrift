@@ -1,4 +1,4 @@
-mod task;
+mod models;
 mod task_list;
 #[cfg(test)]
 mod tests;
@@ -9,7 +9,7 @@ use gpui_component::Root;
 use gpui_platform::application;
 use todoz::Todoz;
 
-use crate::task::{Priority, Task};
+use crate::models::{Priority, Task};
 
 fn main() {
     let todos = vec![

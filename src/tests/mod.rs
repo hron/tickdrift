@@ -1,4 +1,4 @@
-use crate::task::Task;
+use crate::models::Task;
 use crate::todoz::{
     DEFAULT_FONT_SIZE, MAX_FONT_SIZE, MIN_FONT_SIZE, Todoz, ZOOM_STEP, ZoomIn, ZoomOut, ZoomReset,
 };

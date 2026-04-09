@@ -5,7 +5,7 @@ use gpui::{
 use gpui_component::theme::Theme;
 use gpui_component::{ActiveTheme, ThemeMode};
 
-use crate::task::Task;
+use crate::models::Task;
 use crate::task_list::TaskList;
 
 actions!(todoz, [SwitchTheme, ZoomIn, ZoomOut, ZoomReset,]);
