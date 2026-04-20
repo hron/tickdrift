@@ -419,8 +419,15 @@ impl Render for TaskList {
                                             .mt(rems(0.0625))
                                             .mr(rems(0.75))
                                             .rounded_full()
+                                            .border_1()
+                                            .when(todo.priority != Priority::P4, |this| {
+                                                this.border_2()
+                                            })
                                             .cursor_pointer()
-                                            .bg(circle_color(cx, todo))
+                                            .border_color(circle_color(cx, todo))
+                                            .when(todo.completed, |this| {
+                                                this.bg(circle_color(cx, todo))
+                                            })
                                             .flex()
                                             .items_center()
                                             .justify_center()

@@ -3,7 +3,7 @@ use gpui::{
     Window, actions, div, px, rems,
 };
 use gpui_component::theme::Theme;
-use gpui_component::{ActiveTheme, ThemeMode};
+use gpui_component::{ActiveTheme, StyledExt, ThemeMode};
 
 use crate::task::Task;
 use crate::task_list_view::TaskList;
@@ -93,7 +93,16 @@ impl Render for Tickdrift {
             .text_size(rems(0.875))
             .text_color(cx.theme().foreground)
             .bg(cx.theme().background)
-            .p(rems(1.0))
-            .child(self.task_list.clone())
+            .child(
+                div()
+                    .pl(rems(3.0))
+                    .pr(rems(3.0))
+                    .pb(rems(5.0))
+                    .ml_auto()
+                    .mr_auto()
+                    .max_w(rems(60.0))
+                    .child(div().text_2xl().font_bold().child("Life"))
+                    .child(self.task_list.clone()),
+            )
     }
 }
