@@ -5,13 +5,13 @@ use crate::task_list_view::actions::{
 };
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    App, AppContext, Context, Entity, FocusHandle, Focusable, InteractiveElement, IntoElement,
-    MouseButton, ParentElement, Render, SharedString, Styled, Window, div, px, relative, rems,
+    App, AppContext, Context, Entity, FocusHandle, Focusable, InteractiveElement, MouseButton,
+    ParentElement, Render, Styled, Window, div, px, relative, rems,
 };
-use gpui_component::input::{Input, InputState};
-use gpui_component::{
-    ActiveTheme, IconName, Sizable, button::Button, button::ButtonVariants as _, h_flex, v_flex,
-};
+use gpui_component::StyledExt;
+use gpui_component::divider::Divider;
+use gpui_component::input::{Input, InputEvent, InputState};
+use gpui_component::{ActiveTheme, button::Button, button::ButtonVariants as _, h_flex, v_flex};
 
 pub mod actions {
     use gpui::actions;
@@ -35,13 +35,14 @@ pub mod actions {
 }
 
 pub struct TaskList {
-    pub todos: Vec<Task>,
+    pub tasks: Vec<Task>,
     pub selected_index: usize,
     /// Whether the selected task is currently in inline edit mode.
     pub is_editing: bool,
     /// Input state for the task currently being edited.
-    edit_input: Option<Entity<InputState>>,
+    task_title_input: Entity<InputState>,
     focus_handle: FocusHandle,
+    _subscriptions: Vec<gpui::Subscription>,
 }
 
 impl Focusable for TaskList {
@@ -72,11 +73,25 @@ impl TaskList {
             gpui::KeyBinding::new("ctrl-down", MoveEditDown, Some("TaskList && editing")),
         ]);
 
+        let mut _subscriptions = vec![];
+        let task_title_input = cx.new(|cx| InputState::new(window, cx));
+        _subscriptions.push(cx.subscribe_in(
+            &task_title_input,
+            window,
+            |this, _state, event, window, cx| match event {
+                InputEvent::PressEnter { secondary: _ } => {
+                    this.update_task(window, cx);
+                }
+                _ => (),
+            },
+        ));
+
         Self {
-            todos,
+            tasks: todos,
             selected_index: 0,
             is_editing: false,
-            edit_input: None,
+            task_title_input,
+            _subscriptions,
             focus_handle,
         }
     }
@@ -84,16 +99,16 @@ impl TaskList {
     // ── Navigation ──────────────────────────────────────────────────────────
 
     pub fn move_up(&mut self, _: &MoveUp, _window: &mut Window, cx: &mut Context<Self>) {
-        if !self.todos.is_empty() {
-            let len = self.todos.len() as isize;
+        if !self.tasks.is_empty() {
+            let len = self.tasks.len() as isize;
             self.selected_index = (self.selected_index as isize - 1 + len) as usize % len as usize;
             cx.notify();
         }
     }
 
     pub fn move_down(&mut self, _: &MoveDown, _window: &mut Window, cx: &mut Context<Self>) {
-        if !self.todos.is_empty() {
-            let len = self.todos.len() as isize;
+        if !self.tasks.is_empty() {
+            let len = self.tasks.len() as isize;
             self.selected_index = (self.selected_index as isize + 1) as usize % len as usize;
             cx.notify();
         }
@@ -107,14 +122,7 @@ impl TaskList {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if let Some(todo) = self.todos.get_mut(self.selected_index) {
-            todo.completed = !todo.completed;
-            cx.notify();
-        }
-    }
-
-    pub fn toggle_complete_at(&mut self, index: usize, cx: &mut Context<Self>) {
-        if let Some(todo) = self.todos.get_mut(index) {
+        if let Some(todo) = self.tasks.get_mut(self.selected_index) {
             todo.completed = !todo.completed;
             cx.notify();
         }
@@ -123,7 +131,7 @@ impl TaskList {
     // ── Priority ─────────────────────────────────────────────────────────────
 
     fn set_priority(&mut self, priority: Priority, cx: &mut Context<Self>) {
-        if let Some(todo) = self.todos.get_mut(self.selected_index) {
+        if let Some(todo) = self.tasks.get_mut(self.selected_index) {
             todo.priority = priority;
             cx.notify();
         }
@@ -154,51 +162,32 @@ impl TaskList {
 
     /// Cancel editing without saving.
     pub fn stop_editing(&mut self, _: &StopEditing, window: &mut Window, cx: &mut Context<Self>) {
-        self.close_edit(false, None, cx);
-        window.focus(&self.focus_handle, cx);
+        self.close_edit(window, cx);
     }
 
     /// Commit the edited title and exit edit mode.
     pub fn save_edit(&mut self, _: &SaveEdit, window: &mut Window, cx: &mut Context<Self>) {
-        let value = self
-            .edit_input
-            .as_ref()
-            .map(|e| e.read(cx).value())
-            .unwrap_or_default();
-        self.close_edit(true, Some(value), cx);
-        window.focus(&self.focus_handle, cx);
+        self.update_task(window, cx);
     }
 
-    /// Save current edits, move editing state one task up.
+    /// Save current edit and move editing to the previous task.
     pub fn move_edit_up(&mut self, _: &MoveEditUp, window: &mut Window, cx: &mut Context<Self>) {
-        let value = self
-            .edit_input
-            .as_ref()
-            .map(|e| e.read(cx).value())
-            .unwrap_or_default();
-        self.close_edit(true, Some(value), cx);
-
+        self.update_task(window, cx);
         if self.selected_index > 0 {
             self.selected_index -= 1;
         }
         self.open_edit_at(self.selected_index, window, cx);
     }
 
-    /// Save current edits, move editing state one task down.
+    /// Save current edit and move editing to the next task.
     pub fn move_edit_down(
         &mut self,
         _: &MoveEditDown,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let value = self
-            .edit_input
-            .as_ref()
-            .map(|e| e.read(cx).value())
-            .unwrap_or_default();
-        self.close_edit(true, Some(value), cx);
-
-        if self.selected_index + 1 < self.todos.len() {
+        self.update_task(window, cx);
+        if self.selected_index + 1 < self.tasks.len() {
             self.selected_index += 1;
         }
         self.open_edit_at(self.selected_index, window, cx);
@@ -207,40 +196,134 @@ impl TaskList {
     // ── Internal helpers ──────────────────────────────────────────────────────
 
     fn open_edit_at(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
-        if self.todos.is_empty() || index >= self.todos.len() {
+        if self.tasks.is_empty() || index >= self.tasks.len() {
             return;
         }
-        let title = self.todos[index].title.clone();
-        let input = cx.new(|cx| {
-            InputState::new(window, cx)
-                .placeholder("Task name")
-                .default_value(title)
+        let title = self.tasks[index].title.clone();
+        self.task_title_input.update(cx, |input_state, cx| {
+            cx.focus_self(window);
+            input_state.set_value(title, window, cx);
         });
-        // Focus the input so the user can type immediately
-        let input_focus = input.read(cx).focus_handle(cx);
-        window.focus(&input_focus, cx);
 
-        self.selected_index = index;
         self.is_editing = true;
-        self.edit_input = Some(input);
         cx.notify();
     }
 
     /// `save`: if true, writes the new title back to the task.
-    fn close_edit(&mut self, save: bool, value: Option<SharedString>, cx: &mut Context<Self>) {
-        if save {
-            if let Some(v) = value {
-                let trimmed = v.trim().to_string();
-                if !trimmed.is_empty() {
-                    if let Some(todo) = self.todos.get_mut(self.selected_index) {
-                        todo.title = trimmed.into();
-                    }
-                }
-            }
-        }
+    fn close_edit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.is_editing = false;
-        self.edit_input = None;
+        window.focus(&self.focus_handle, cx);
         cx.notify();
+    }
+
+    fn update_task(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.tasks[self.selected_index].title = self.task_title_input.read(cx).value();
+        self.close_edit(window, cx);
+    }
+
+    fn task_row(&self, task: &Task, is_selected: bool, cx: &Context<Self>) -> gpui::Div {
+        div()
+            .flex()
+            .flex_col()
+            .border_1()
+            .rounded(rems(0.375))
+            .border_color(gpui::transparent_white())
+            .when(is_selected, |el| {
+                let color = cx.theme().accent_foreground;
+                el.border_color(color).bg(color.opacity(0.05))
+            })
+            .px(rems(0.5))
+            .py(rems(0.625))
+            .child(
+                div()
+                    .flex()
+                    .items_start()
+                    .child(
+                        div()
+                            .flex_none()
+                            .w(rems(1.125))
+                            .h(rems(1.125))
+                            .mt(rems(0.0625))
+                            .mr(rems(0.75))
+                            .rounded_full()
+                            .border_1()
+                            .when(task.priority != Priority::P4, |this| this.border_2())
+                            .cursor_pointer()
+                            .border_color(circle_color(cx, &task))
+                            .when(task.completed, |this| this.bg(circle_color(cx, &task)))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .on_mouse_down(
+                                MouseButton::Left,
+                                cx.listener(|this, _, window, cx| {
+                                    this.toggle_complete(&ToggleComplete, window, cx)
+                                }),
+                            )
+                            .child(if task.completed {
+                                div()
+                                    .text_size(rems(0.6875))
+                                    .line_height(relative(1.0))
+                                    .text_color(cx.theme().background)
+                                    .child("✓")
+                            } else {
+                                div()
+                                    .w(rems(0.9375))
+                                    .h(rems(0.9375))
+                                    .rounded_full()
+                                    .bg(cx.theme().background)
+                            }),
+                    )
+                    .child(
+                        div()
+                            .w_full()
+                            .min_w(px(0.0))
+                            .line_height(relative(1.4))
+                            .when(task.completed, |el| {
+                                el.line_through().text_color(cx.theme().muted_foreground)
+                            })
+                            .child(task.title.clone()),
+                    ),
+            )
+    }
+
+    fn editor(&self, cx: &mut Context<Self>) -> gpui::Div {
+        let border_color = cx.theme().accent_foreground;
+        v_flex()
+            .border_1()
+            .border_color(border_color)
+            .rounded(rems(0.375))
+            .gap(rems(0.25))
+            .child(
+                div()
+                    .pt(rems(0.25))
+                    .font_bold()
+                    .line_height(relative(1.4))
+                    .child(Input::new(&self.task_title_input).appearance(false)),
+            )
+            .child(Divider::horizontal().color(border_color))
+            .child(
+                h_flex()
+                    .p(rems(0.75))
+                    .justify_end()
+                    .gap(rems(0.5))
+                    .child({
+                        Button::new("edit-cancel")
+                            .ghost()
+                            .label("Cancel")
+                            .on_click(cx.listener(move |this, _input, window, cx| {
+                                this.close_edit(window, cx);
+                            }))
+                    })
+                    .child(
+                        Button::new("edit-save")
+                            .danger()
+                            .label("Save")
+                            .on_click(cx.listener(move |this, _input, window, cx| {
+                                this.update_task(window, cx);
+                            })),
+                    ),
+            )
     }
 }
 
@@ -272,7 +355,7 @@ impl Render for TaskList {
             .on_action(cx.listener(TaskList::move_edit_down))
             .flex()
             .flex_col()
-            .children(self.todos.iter().enumerate().map(|(i, todo)| {
+            .children(self.tasks.iter().enumerate().map(|(i, task)| {
                 let is_selected = i == selected_index;
                 let is_row_editing = is_editing && i == selected_index;
 
@@ -289,197 +372,34 @@ impl Render for TaskList {
                         )
                     })
                     .child(if is_row_editing {
-                        // ── Inline edit panel ──────────────────────────────
-                        let edit_input = self
-                            .edit_input
-                            .clone()
-                            .expect("edit_input set when is_editing");
-                        let entity = cx.entity().clone();
-                        let focus_handle = self.focus_handle.clone();
-
-                        v_flex()
-                            .border_2()
-                            .border_color(cx.theme().primary)
-                            .rounded(rems(0.375))
-                            .bg(cx.theme().background)
-                            .my(rems(0.25))
-                            .p(rems(0.75))
-                            .gap(rems(0.25))
-                            // Title input row
-                            .child(Input::new(&edit_input).appearance(false))
-                            // Separator between title and toolbar
-                            .child(div().h(px(1.0)).bg(cx.theme().muted))
-                            // Toolbar row (Date, Priority badge, Labels, Deadline, …)
-                            .child(
-                                h_flex()
-                                    .gap(rems(0.375))
-                                    .flex_wrap()
-                                    .child(
-                                        Button::new("edit-date")
-                                            .outline()
-                                            .xsmall()
-                                            .icon(IconName::Calendar)
-                                            .label("Date"),
-                                    )
-                                    .when(!priority_label(todo).is_empty(), |el| {
-                                        el.child(
-                                            Button::new("edit-priority").outline().xsmall().child(
-                                                h_flex()
-                                                    .gap(rems(0.25))
-                                                    .items_center()
-                                                    .child(
-                                                        div()
-                                                            .w(rems(0.5))
-                                                            .h(rems(0.5))
-                                                            .rounded_full()
-                                                            .bg(circle_color(cx, todo)),
-                                                    )
-                                                    .child(priority_label(todo)),
-                                            ),
-                                        )
-                                    })
-                                    .child(
-                                        Button::new("edit-labels")
-                                            .outline()
-                                            .xsmall()
-                                            .label("Labels"),
-                                    )
-                                    .child(
-                                        Button::new("edit-deadline")
-                                            .outline()
-                                            .xsmall()
-                                            .label("Deadline"),
-                                    ),
-                            )
-                            // Separator between toolbar and footer
-                            .child(div().h(px(1.0)).bg(cx.theme().muted))
-                            // Footer row: Cancel + Save
-                            .child(
-                                h_flex()
-                                    .justify_end()
-                                    .gap(rems(0.5))
-                                    .child({
-                                        let entity2 = entity.clone();
-                                        let fh2 = focus_handle.clone();
-                                        Button::new("edit-cancel").ghost().label("Cancel").on_click(
-                                            move |_, window, cx| {
-                                                cx.update_entity(&entity2, |view, cx| {
-                                                    view.close_edit(false, None, cx);
-                                                });
-                                                window.focus(&fh2, cx);
-                                            },
-                                        )
-                                    })
-                                    .child({
-                                        let entity3 = entity.clone();
-                                        let fh3 = focus_handle.clone();
-                                        Button::new("edit-save").danger().label("Save").on_click(
-                                            move |_, window, cx| {
-                                                let value =
-                                                    cx.update_entity(&entity3, |view, cx| {
-                                                        view.edit_input
-                                                            .as_ref()
-                                                            .map(|e| e.read(cx).value())
-                                                            .unwrap_or_default()
-                                                    });
-                                                cx.update_entity(&entity3, |view, cx| {
-                                                    view.close_edit(true, Some(value), cx);
-                                                });
-                                                window.focus(&fh3, cx);
-                                            },
-                                        )
-                                    }),
-                            )
-                            .into_any_element()
+                        self.editor(cx)
                     } else {
-                        // ── Normal task row ────────────────────────────────
-                        div()
-                            .flex()
-                            .flex_col()
-                            .border_1()
-                            .rounded(rems(0.375))
-                            .when(is_selected, |el| {
-                                el.border_color(cx.theme().primary)
-                                    .bg(cx.theme().primary.opacity(0.05))
-                            })
-                            .when(!is_selected, |el| {
-                                el.border_color(gpui::transparent_black())
-                            })
-                            .px(rems(0.5))
-                            .py(rems(0.625))
-                            .child(
-                                div()
-                                    .flex()
-                                    .items_start()
-                                    .child(
-                                        div()
-                                            .flex_none()
-                                            .w(rems(1.125))
-                                            .h(rems(1.125))
-                                            .mt(rems(0.0625))
-                                            .mr(rems(0.75))
-                                            .rounded_full()
-                                            .border_1()
-                                            .when(todo.priority != Priority::P4, |this| {
-                                                this.border_2()
-                                            })
-                                            .cursor_pointer()
-                                            .border_color(circle_color(cx, todo))
-                                            .when(todo.completed, |this| {
-                                                this.bg(circle_color(cx, todo))
-                                            })
-                                            .flex()
-                                            .items_center()
-                                            .justify_center()
-                                            .on_mouse_down(
-                                                MouseButton::Left,
-                                                cx.listener(move |this, _, _window, cx| {
-                                                    this.toggle_complete_at(i, cx);
-                                                }),
-                                            )
-                                            .child(if todo.completed {
-                                                div()
-                                                    .text_size(rems(0.6875))
-                                                    .line_height(relative(1.0))
-                                                    .text_color(cx.theme().background)
-                                                    .child("✓")
-                                            } else {
-                                                div()
-                                                    .w(rems(0.9375))
-                                                    .h(rems(0.9375))
-                                                    .rounded_full()
-                                                    .bg(cx.theme().background)
-                                            }),
-                                    )
-                                    .child(
-                                        div()
-                                            .w_full()
-                                            .min_w(px(0.0))
-                                            .line_height(relative(1.4))
-                                            .when(todo.completed, |el| {
-                                                el.line_through()
-                                                    .text_color(cx.theme().muted_foreground)
-                                            })
-                                            .child(todo.title.clone()),
-                                    ),
-                            )
-                            .into_any_element()
+                        self.task_row(task, is_selected, cx)
                     })
+                // .when(is_row_editing, |_this| self.editor(task, window, cx))
+                // .when(!is_row_editing, |_this| {
+                //     self.task_row(task, is_selected, cx)
+                // })
+                // .when_else(
+                //     is_row_editing,
+                //     |_this| self.editor(task, window, cx),
+                //     |_this| self.task_row(task, is_selected, cx),
+                // )
             }))
     }
 }
 
-fn priority_label(todo: &Task) -> String {
-    let p = match todo.priority {
-        Priority::P1 => "P1",
-        Priority::P2 => "P2",
-        Priority::P3 => "P3",
-        Priority::P4 => "",
-    };
-    p.to_string()
-}
+// fn priority_label(todo: &Task) -> String {
+//     let p = match todo.priority {
+//         Priority::P1 => "P1",
+//         Priority::P2 => "P2",
+//         Priority::P3 => "P3",
+//         Priority::P4 => "",
+//     };
+//     p.to_string()
+// }
 
-fn circle_color(cx: &mut Context<'_, TaskList>, todo: &Task) -> gpui::Hsla {
+fn circle_color(cx: &Context<'_, TaskList>, todo: &Task) -> gpui::Hsla {
     match todo.priority {
         Priority::P1 => cx.theme().danger,
         Priority::P2 => cx.theme().warning,
@@ -558,46 +478,34 @@ mod tests {
     #[gpui::test]
     async fn test_save_edit(cx: &mut gpui::TestAppContext) {
         let tasks = vec![Task::new("Original title", false)];
-        let (window, cx) = build_test_app(cx, tasks);
-        let todo_list = window.read_with(cx, |mw, _| mw.task_list.clone());
+        let (task_list_entity, cx) = build_test_app(cx, tasks);
+        let task_list = task_list_entity.read_with(cx, |mw, _| mw.task_list.clone());
 
         cx.dispatch_action(StartEditing);
-        let input_entity = todo_list.read_with(cx, |tl, _| {
-            tl.edit_input.clone().expect("edit_input should be set")
-        });
-        cx.update(|window, cx| {
-            input_entity.update(cx, |state, cx| {
-                state.set_value("Updated title", window, cx);
-            });
-        });
-
+        cx.simulate_keystrokes("ctrl-a");
+        cx.simulate_input("Updated title");
         cx.dispatch_action(SaveEdit);
-        todo_list.read_with(cx, |tl, _| {
+
+        task_list.read_with(cx, |tl, _| {
             assert!(!tl.is_editing);
-            assert_eq!(tl.todos[0].title.as_ref(), "Updated title");
+            assert_eq!(tl.tasks[0].title.as_ref(), "Updated title");
         });
     }
 
     #[gpui::test]
     async fn test_cancel_edit_discards(cx: &mut gpui::TestAppContext) {
         let tasks = vec![Task::new("Original title", false)];
-        let (window, cx) = build_test_app(cx, tasks);
-        let todo_list = window.read_with(cx, |mw, _| mw.task_list.clone());
+        let (task_list_entity, cx) = build_test_app(cx, tasks);
+        let task_list = task_list_entity.read_with(cx, |mw, _| mw.task_list.clone());
 
         cx.dispatch_action(StartEditing);
-        let input_entity2 = todo_list.read_with(cx, |tl, _| {
-            tl.edit_input.clone().expect("edit_input should be set")
-        });
-        cx.update(|window, cx| {
-            input_entity2.update(cx, |state, cx| {
-                state.set_value("Discarded title", window, cx);
-            });
-        });
+        cx.simulate_keystrokes("ctrl-a");
+        cx.simulate_input("Discarded title");
+        cx.dispatch_action(StopEditing); // cancel — no save
 
-        cx.dispatch_action(StopEditing);
-        todo_list.read_with(cx, |tl, _| {
+        task_list.read_with(cx, |tl, _| {
             assert!(!tl.is_editing);
-            assert_eq!(tl.todos[0].title.as_ref(), "Original title");
+            assert_eq!(tl.tasks[0].title.as_ref(), "Original title");
         });
     }
 
@@ -608,22 +516,16 @@ mod tests {
             Task::new("Task two", false),
             Task::new("Task three", false),
         ];
-        let (window, cx) = build_test_app(cx, tasks);
-        let todo_list = window.read_with(cx, |mw, _| mw.task_list.clone());
+        let (task_list_entity, cx) = build_test_app(cx, tasks);
+        let task_list = task_list_entity.read_with(cx, |mw, _| mw.task_list.clone());
 
         cx.dispatch_action(StartEditing);
-        let input_entity3 = todo_list.read_with(cx, |tl, _| {
-            tl.edit_input.clone().expect("edit_input should be set")
-        });
-        cx.update(|window, cx| {
-            input_entity3.update(cx, |state, cx| {
-                state.set_value("Edited task one", window, cx);
-            });
-        });
-
+        cx.simulate_keystrokes("ctrl-a");
+        cx.simulate_input("Edited task one");
         cx.dispatch_action(MoveEditDown);
-        todo_list.read_with(cx, |tl, _| {
-            assert_eq!(tl.todos[0].title.as_ref(), "Edited task one");
+
+        task_list.read_with(cx, |tl, _| {
+            assert_eq!(tl.tasks[0].title.as_ref(), "Edited task one");
             assert!(tl.is_editing);
             assert_eq!(tl.selected_index, 1);
         });
@@ -632,28 +534,22 @@ mod tests {
     #[gpui::test]
     async fn test_move_edit_up_saves_and_moves(cx: &mut gpui::TestAppContext) {
         let tasks = vec![Task::new("Task one", false), Task::new("Task two", false)];
-        let (window, cx) = build_test_app(cx, tasks);
-        let todo_list = window.read_with(cx, |mw, _| mw.task_list.clone());
+        let (task_list_entity, cx) = build_test_app(cx, tasks);
+        let task_list = task_list_entity.read_with(cx, |mw, _| mw.task_list.clone());
 
         cx.simulate_keystrokes("down");
         cx.dispatch_action(StartEditing);
-        todo_list.read_with(cx, |tl, _| {
+        task_list.read_with(cx, |tl, _| {
             assert!(tl.is_editing);
             assert_eq!(tl.selected_index, 1);
         });
 
-        let input_entity4 = todo_list.read_with(cx, |tl, _| {
-            tl.edit_input.clone().expect("edit_input should be set")
-        });
-        cx.update(|window, cx| {
-            input_entity4.update(cx, |state, cx| {
-                state.set_value("Edited task two", window, cx);
-            });
-        });
-
+        cx.simulate_keystrokes("ctrl-a");
+        cx.simulate_input("Edited task two");
         cx.dispatch_action(MoveEditUp);
-        todo_list.read_with(cx, |tl, _| {
-            assert_eq!(tl.todos[1].title.as_ref(), "Edited task two");
+
+        task_list.read_with(cx, |tl, _| {
+            assert_eq!(tl.tasks[1].title.as_ref(), "Edited task two");
             assert!(tl.is_editing);
             assert_eq!(tl.selected_index, 0);
         });
@@ -666,24 +562,19 @@ mod tests {
             Task::new("Task two", false),
             Task::new("Task three", true),
         ];
-        let (window, cx) = build_test_app(cx, tasks);
-        let todo_list = window.read_with(cx, |mw, _| mw.task_list.clone());
+        let (task_list_entity, cx) = build_test_app(cx, tasks);
+        let task_list = task_list_entity.read_with(cx, |mw, _| mw.task_list.clone());
 
-        let selected_ix = 0;
-        todo_list.read_with(cx, |tl, _| {
-            assert_eq!(tl.selected_index, selected_ix);
-            assert_eq!(tl.todos[selected_ix].completed, false);
+        task_list.read_with(cx, |tl, _| {
+            assert_eq!(tl.selected_index, 0);
+            assert!(!tl.tasks[0].completed);
         });
 
         cx.simulate_keystrokes("e");
-        todo_list.read_with(cx, |tl, _| {
-            assert_eq!(tl.todos[selected_ix].completed, true);
-        });
+        task_list.read_with(cx, |tl, _| assert!(tl.tasks[0].completed));
 
         cx.simulate_keystrokes("e");
-        todo_list.read_with(cx, |tl, _| {
-            assert_eq!(tl.todos[selected_ix].completed, false);
-        });
+        task_list.read_with(cx, |tl, _| assert!(!tl.tasks[0].completed));
     }
 
     #[gpui::test]
@@ -693,50 +584,42 @@ mod tests {
             Task::new("Task two", false),
             Task::new("Task three", false),
         ];
-        let (window, cx) = build_test_app(cx, tasks);
-        let todo_list = window.read_with(cx, |mw, _| mw.task_list.clone());
+        let (task_list_entity, cx) = build_test_app(cx, tasks);
+        let task_list = task_list_entity.read_with(cx, |mw, _| mw.task_list.clone());
 
-        let selected_ix = 0;
-
-        todo_list.read_with(cx, |tl, _| {
-            assert_eq!(tl.selected_index, selected_ix);
-            assert_eq!(tl.todos[selected_ix].priority, Priority::P4);
+        task_list.read_with(cx, |tl, _| {
+            assert_eq!(tl.selected_index, 0);
+            assert_eq!(tl.tasks[0].priority, Priority::P4);
         });
 
         cx.simulate_keystrokes("1");
-        todo_list.read_with(cx, |tl, _| {
-            assert_eq!(tl.todos[selected_ix].priority, Priority::P1);
-        });
+        task_list.read_with(cx, |tl, _| assert_eq!(tl.tasks[0].priority, Priority::P1));
 
         cx.simulate_keystrokes("2");
-        todo_list.read_with(cx, |tl, _| {
-            assert_eq!(tl.todos[selected_ix].priority, Priority::P2);
-        });
+        task_list.read_with(cx, |tl, _| assert_eq!(tl.tasks[0].priority, Priority::P2));
 
         cx.simulate_keystrokes("1");
-        todo_list.read_with(cx, |tl, _| {
-            assert_eq!(tl.todos[selected_ix].priority, Priority::P1);
-        });
+        task_list.read_with(cx, |tl, _| assert_eq!(tl.tasks[0].priority, Priority::P1));
     }
 
     #[gpui::test]
     async fn test_e_key_not_consumed_while_editing(cx: &mut gpui::TestAppContext) {
         let tasks = vec![Task::new("Task one", false)];
-        let (window, cx) = build_test_app(cx, tasks);
-        let todo_list = window.read_with(cx, |mw, _| mw.task_list.clone());
+        let (task_list_entity, cx) = build_test_app(cx, tasks);
+        let task_list = task_list_entity.read_with(cx, |mw, _| mw.task_list.clone());
 
         cx.dispatch_action(StartEditing);
-        todo_list.read_with(cx, |tl, _| {
+        task_list.read_with(cx, |tl, _| {
             assert!(tl.is_editing);
-            assert_eq!(tl.todos[0].completed, false);
+            assert!(!tl.tasks[0].completed);
         });
 
-        // Pressing 'e' while editing must NOT toggle completion
+        // 'e' while editing must NOT toggle completion
         cx.simulate_keystrokes("e");
-        todo_list.read_with(cx, |tl, _| {
-            assert_eq!(
-                tl.todos[0].completed, false,
-                "'e' should not toggle complete while editing"
+        task_list.read_with(cx, |tl, _| {
+            assert!(
+                !tl.tasks[0].completed,
+                "'e' must not toggle complete while editing"
             );
         });
     }

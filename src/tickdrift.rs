@@ -93,6 +93,7 @@ impl Render for Tickdrift {
             .text_size(rems(0.875))
             .text_color(cx.theme().foreground)
             .bg(cx.theme().background)
+            .font_family("Noto Sans")
             .child(
                 div()
                     .pl(rems(3.0))

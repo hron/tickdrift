@@ -1,3 +1,4 @@
+use gpui_component_assets::Assets;
 mod task;
 mod task_list_view;
 #[cfg(test)]
@@ -29,7 +30,7 @@ fn main() {
         Task::new("Define next actions to create MVP tickdrift", false).with_priority(Priority::P3),
     ];
 
-    application().run(|cx: &mut gpui::App| {
+    application().with_assets(Assets).run(|cx: &mut gpui::App| {
         gpui_component::init(cx);
 
         let bounds = gpui::Bounds::centered(None, size(px(400.0), px(600.0)), cx);
