@@ -1,3 +1,4 @@
+use self::actions::{MoveEditDown, MoveEditUp, SaveEdit, StopEditing};
 use gpui::{
     App, AppContext, Context, Entity, EventEmitter, FocusHandle, Focusable, InteractiveElement,
     KeyBinding, ParentElement, Render, Styled, Window, div, rems,
@@ -7,7 +8,6 @@ use gpui_component::StyledExt;
 use gpui_component::divider::Divider;
 use gpui_component::input::{Input, InputEvent, InputState};
 use gpui_component::{button::Button, button::ButtonVariants as _, h_flex, v_flex};
-use self::actions::{MoveEditDown, MoveEditUp, SaveEdit, StopEditing};
 
 pub mod actions {
     use gpui::actions;
@@ -62,7 +62,11 @@ impl TaskEditor {
 
         cx.bind_keys([
             KeyBinding::new("escape", StopEditing, Some("TaskEditor")),
-            KeyBinding::new("enter", SaveEdit, Some("TaskEditor && !TaskDescriptionField")),
+            KeyBinding::new(
+                "enter",
+                SaveEdit,
+                Some("TaskEditor && !TaskDescriptionField"),
+            ),
             KeyBinding::new("secondary-enter", SaveEdit, Some("TaskEditor")),
             KeyBinding::new(
                 "secondary-enter",
