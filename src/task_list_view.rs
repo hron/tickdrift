@@ -41,6 +41,8 @@ pub struct TaskList {
     pub is_editing: bool,
     /// Input state for the task currently being edited.
     task_title_input: Entity<InputState>,
+    /// Input state for the task description currently being edited.
+    task_desc_input: Entity<InputState>,
     focus_handle: FocusHandle,
     _subscriptions: Vec<gpui::Subscription>,
 }
@@ -68,13 +70,31 @@ impl TaskList {
             gpui::KeyBinding::new("ctrl-e", StartEditing, Some("TaskList && !editing")),
             // Only active when editing
             gpui::KeyBinding::new("escape", StopEditing, Some("TaskList && editing")),
-            gpui::KeyBinding::new("enter", SaveEdit, Some("TaskList && editing")),
+            gpui::KeyBinding::new(
+                "enter",
+                SaveEdit,
+                Some("TaskList && !TaskDescriptionField && editing"),
+            ),
+            gpui::KeyBinding::new("secondary-enter", SaveEdit, Some("TaskList && editing")),
+            // Override the default of gpui-component::Input
+            gpui::KeyBinding::new(
+                "secondary-enter",
+                SaveEdit,
+                Some("TaskDescriptionField > Input"),
+            ),
             gpui::KeyBinding::new("ctrl-up", MoveEditUp, Some("TaskList && editing")),
             gpui::KeyBinding::new("ctrl-down", MoveEditDown, Some("TaskList && editing")),
         ]);
 
         let mut _subscriptions = vec![];
         let task_title_input = cx.new(|cx| InputState::new(window, cx));
+        let task_desc_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .multi_line(true)
+                .rows(1)
+                .auto_grow(1, 7)
+                .placeholder("Description")
+        });
         _subscriptions.push(cx.subscribe_in(
             &task_title_input,
             window,
@@ -91,6 +111,7 @@ impl TaskList {
             selected_index: 0,
             is_editing: false,
             task_title_input,
+            task_desc_input,
             _subscriptions,
             focus_handle,
         }
@@ -199,10 +220,15 @@ impl TaskList {
         if self.tasks.is_empty() || index >= self.tasks.len() {
             return;
         }
-        let title = self.tasks[index].title.clone();
+        let task = &self.tasks[index];
+        let title = task.title.clone();
+        let desc = task.description.clone();
         self.task_title_input.update(cx, |input_state, cx| {
             cx.focus_self(window);
             input_state.set_value(title, window, cx);
+        });
+        self.task_desc_input.update(cx, |input_state, cx| {
+            input_state.set_value(desc, window, cx);
         });
 
         self.is_editing = true;
@@ -218,6 +244,7 @@ impl TaskList {
 
     fn update_task(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.tasks[self.selected_index].title = self.task_title_input.read(cx).value();
+        self.tasks[self.selected_index].description = self.task_desc_input.read(cx).value();
         self.close_edit(window, cx);
     }
 
@@ -276,13 +303,28 @@ impl TaskList {
                     )
                     .child(
                         div()
+                            .flex()
+                            .flex_col()
                             .w_full()
                             .min_w(px(0.0))
-                            .line_height(relative(1.4))
-                            .when(task.completed, |el| {
-                                el.line_through().text_color(cx.theme().muted_foreground)
-                            })
-                            .child(task.title.clone()),
+                            .child(
+                                div()
+                                    .line_height(relative(1.4))
+                                    .when(task.completed, |el| {
+                                        el.line_through().text_color(cx.theme().muted_foreground)
+                                    })
+                                    .child(task.title.clone()),
+                            )
+                            .when(!task.description.is_empty(), |el| {
+                                el.child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .line_height(relative(1.3))
+                                        .mt(rems(0.125))
+                                        .child(task.description.clone()),
+                                )
+                            }),
                     ),
             )
     }
@@ -300,6 +342,12 @@ impl TaskList {
                     .font_bold()
                     .line_height(relative(1.4))
                     .child(Input::new(&self.task_title_input).appearance(false)),
+            )
+            .child(
+                div()
+                    .text_xs()
+                    .child(Input::new(&self.task_desc_input).appearance(false))
+                    .key_context("TaskDescriptionField"),
             )
             .child(Divider::horizontal().color(border_color))
             .child(
@@ -621,6 +669,46 @@ mod tests {
                 !tl.tasks[0].completed,
                 "'e' must not toggle complete while editing"
             );
+        });
+    }
+
+    #[gpui::test]
+    async fn test_enter_key_saves_edit(cx: &mut gpui::TestAppContext) {
+        let tasks = vec![Task::new("Task one", false)];
+        let (task_list_entity, cx) = build_test_app(cx, tasks);
+        let task_list = task_list_entity.read_with(cx, |mw, _| mw.task_list.clone());
+
+        cx.dispatch_action(StartEditing);
+        cx.simulate_keystrokes("ctrl-a");
+        cx.simulate_input("Changed task");
+        cx.simulate_keystrokes("enter");
+        task_list.read_with(cx, |tl, _| {
+            assert!(!tl.is_editing);
+            assert_eq!(tl.tasks[0].title, "Changed task");
+        });
+
+        cx.dispatch_action(StartEditing);
+        // Switch focus to the description field
+        cx.simulate_keystrokes("tab");
+        cx.simulate_keystrokes("enter");
+        task_list.read_with(cx, |tl, _| {
+            assert!(tl.is_editing);
+        });
+    }
+
+    #[gpui::test]
+    async fn test_ctrl_enter_in_description_saves_edit(cx: &mut gpui::TestAppContext) {
+        let tasks = vec![Task::new("Task one", false)];
+        let (task_list_entity, cx) = build_test_app(cx, tasks);
+        let task_list = task_list_entity.read_with(cx, |mw, _| mw.task_list.clone());
+
+        cx.dispatch_action(StartEditing);
+        cx.simulate_keystrokes("tab ctrl-a");
+        cx.simulate_input("New description");
+        cx.simulate_keystrokes("ctrl-enter");
+        task_list.read_with(cx, |tl, _| {
+            assert!(!tl.is_editing);
+            assert_eq!(tl.tasks[0].description, "New description");
         });
     }
 }
