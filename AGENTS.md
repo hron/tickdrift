@@ -11,6 +11,7 @@ Create a Rust desktop todo app using gpui (the UI framework from Zed). The app s
 - Build incrementally: list view → keyboard navigation → CRUD
 - **Always commit `Cargo.lock`** to ensure reproducible builds
 - **After any UI change: run the sway verification workflow (see UI Verification section) before considering the task done. Do NOT rely on `cargo build` success alone.**
+- **Always run `cargo fmt` after applying any edits to `.rs` files.**
 
 ## Dependencies
 
