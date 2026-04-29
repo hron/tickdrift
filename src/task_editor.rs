@@ -2,7 +2,7 @@ use self::actions::{MoveEditDown, MoveEditUp, SaveEdit, StopEditing};
 use chrono::NaiveDate;
 use gpui::{
     App, AppContext, Context, Entity, EventEmitter, FocusHandle, Focusable, InteractiveElement,
-    KeyBinding, ParentElement, Render, Styled, Window, div, px, rems,
+    KeyBinding, ParentElement, Render, SharedString, Styled, Window, div, px, rems,
 };
 use gpui_component::ActiveTheme;
 use gpui_component::StyledExt;
@@ -20,10 +20,14 @@ pub mod actions {
 }
 
 pub enum TaskEditorEvent {
-    Save,
+    Save {
+        title: SharedString,
+        description: SharedString,
+        date: Option<NaiveDate>,
+    },
     Cancel,
-    SaveAndMoveUp,
-    SaveAndMoveDown,
+    MoveEditUp,
+    MoveEditDown,
 }
 
 pub struct TaskEditor {
@@ -85,9 +89,16 @@ impl TaskEditor {
         _subscriptions.push(cx.subscribe_in(
             &task_title_input,
             window,
-            |_this, _state, event, _window, cx| match event {
+            |this, _state, event, _window, cx| match event {
                 InputEvent::PressEnter { secondary: _ } => {
-                    cx.emit(TaskEditorEvent::Save);
+                    let title = this.task_title_input.read(cx).value();
+                    let description = this.task_desc_input.read(cx).value();
+                    let date = this.date;
+                    cx.emit(TaskEditorEvent::Save {
+                        title,
+                        description,
+                        date,
+                    });
                 }
                 _ => (),
             },
@@ -95,9 +106,16 @@ impl TaskEditor {
         _subscriptions.push(cx.subscribe_in(
             &task_desc_input,
             window,
-            |_this, _state, event, _window, cx| match event {
+            |this, _state, event, _window, cx| match event {
                 InputEvent::PressEnter { secondary: true } => {
-                    cx.emit(TaskEditorEvent::Save);
+                    let title = this.task_title_input.read(cx).value();
+                    let description = this.task_desc_input.read(cx).value();
+                    let date = this.date;
+                    cx.emit(TaskEditorEvent::Save {
+                        title,
+                        description,
+                        date,
+                    });
                 }
                 _ => (),
             },
@@ -153,14 +171,21 @@ impl Render for TaskEditor {
             .on_action(cx.listener(|_this, _: &StopEditing, _window, cx| {
                 cx.emit(TaskEditorEvent::Cancel);
             }))
-            .on_action(cx.listener(|_this, _: &SaveEdit, _window, cx| {
-                cx.emit(TaskEditorEvent::Save);
+            .on_action(cx.listener(|this, _: &SaveEdit, _window, cx| {
+                let title = this.task_title_input.read(cx).value();
+                let description = this.task_desc_input.read(cx).value();
+                let date = this.date;
+                cx.emit(TaskEditorEvent::Save {
+                    title,
+                    description,
+                    date,
+                });
             }))
             .on_action(cx.listener(|_this, _: &MoveEditUp, _window, cx| {
-                cx.emit(TaskEditorEvent::SaveAndMoveUp);
+                cx.emit(TaskEditorEvent::MoveEditUp);
             }))
             .on_action(cx.listener(|_this, _: &MoveEditDown, _window, cx| {
-                cx.emit(TaskEditorEvent::SaveAndMoveDown);
+                cx.emit(TaskEditorEvent::MoveEditDown);
             }))
             .border_1()
             .border_color(border_color)
@@ -273,8 +298,15 @@ impl Render for TaskEditor {
                         Button::new("edit-save")
                             .danger()
                             .label("Save")
-                            .on_click(cx.listener(|_this, _input, _window, cx| {
-                                cx.emit(TaskEditorEvent::Save);
+                            .on_click(cx.listener(|this, _input, _window, cx| {
+                                let title = this.task_title_input.read(cx).value();
+                                let description = this.task_desc_input.read(cx).value();
+                                let date = this.date;
+                                cx.emit(TaskEditorEvent::Save {
+                                    title,
+                                    description,
+                                    date,
+                                });
                             })),
                     ),
             )
@@ -339,7 +371,7 @@ mod tests {
     }
 
     #[gpui::test]
-    async fn test_move_edit_down_saves_and_moves(cx: &mut gpui::TestAppContext) {
+    async fn test_move_edit_down_moves_without_saving(cx: &mut gpui::TestAppContext) {
         let tasks = vec![
             Task::new("Task one", false),
             Task::new("Task two", false),
@@ -354,14 +386,14 @@ mod tests {
         cx.dispatch_action(MoveEditDown);
 
         task_list.read_with(cx, |tl, _| {
-            assert_eq!(tl.tasks[0].title.as_ref(), "Edited task one");
+            assert_eq!(tl.tasks[0].title.as_ref(), "Task one");
             assert!(tl.is_editing);
             assert_eq!(tl.selected_index, 1);
         });
     }
 
     #[gpui::test]
-    async fn test_move_edit_up_saves_and_moves(cx: &mut gpui::TestAppContext) {
+    async fn test_move_edit_up_moves_without_saving(cx: &mut gpui::TestAppContext) {
         let tasks = vec![Task::new("Task one", false), Task::new("Task two", false)];
         let (task_list_entity, cx) = build_test_app(cx, tasks);
         let task_list = task_list_entity.read_with(cx, |mw, _| mw.task_list.clone());
@@ -378,7 +410,7 @@ mod tests {
         cx.dispatch_action(MoveEditUp);
 
         task_list.read_with(cx, |tl, _| {
-            assert_eq!(tl.tasks[1].title.as_ref(), "Edited task two");
+            assert_eq!(tl.tasks[1].title.as_ref(), "Task two");
             assert!(tl.is_editing);
             assert_eq!(tl.selected_index, 0);
         });

@@ -156,21 +156,28 @@ impl TaskList {
             &editor,
             window,
             |this, _editor, event, window, cx| match event {
-                TaskEditorEvent::Save => {
-                    this.update_task(window, cx);
+                TaskEditorEvent::Save {
+                    title,
+                    description,
+                    date,
+                } => {
+                    this.tasks[this.selected_index].title = title.clone();
+                    this.tasks[this.selected_index].description = description.clone();
+                    this.tasks[this.selected_index].date = *date;
+                    this.close_edit(window, cx);
                 }
                 TaskEditorEvent::Cancel => {
                     this.close_edit(window, cx);
                 }
-                TaskEditorEvent::SaveAndMoveUp => {
-                    this.update_task(window, cx);
+                TaskEditorEvent::MoveEditUp => {
+                    this.close_edit(window, cx);
                     if this.selected_index > 0 {
                         this.selected_index -= 1;
                     }
                     this.open_edit_at(this.selected_index, window, cx);
                 }
-                TaskEditorEvent::SaveAndMoveDown => {
-                    this.update_task(window, cx);
+                TaskEditorEvent::MoveEditDown => {
+                    this.close_edit(window, cx);
                     if this.selected_index + 1 < this.tasks.len() {
                         this.selected_index += 1;
                     }
@@ -189,22 +196,6 @@ impl TaskList {
         self._editor_subscription = None;
         window.focus(&self.focus_handle, cx);
         cx.notify();
-    }
-
-    fn update_task(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(editor) = &self.task_editor {
-            let (title, description, date) = editor.update(cx, |editor, cx| {
-                (
-                    editor.task_title_input.read(cx).value(),
-                    editor.task_desc_input.read(cx).value(),
-                    editor.date,
-                )
-            });
-            self.tasks[self.selected_index].title = title;
-            self.tasks[self.selected_index].description = description;
-            self.tasks[self.selected_index].date = date;
-        }
-        self.close_edit(window, cx);
     }
 
     fn task_row(&self, task: &Task, is_selected: bool, cx: &Context<Self>) -> gpui::Div {
