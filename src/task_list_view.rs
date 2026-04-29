@@ -8,7 +8,7 @@ use gpui::{
     App, AppContext, Context, Entity, FocusHandle, Focusable, InteractiveElement, MouseButton,
     ParentElement, Render, Styled, Window, div, px, relative, rems,
 };
-use gpui_component::ActiveTheme;
+use gpui_component::{ActiveTheme, Icon, IconName};
 
 pub mod actions {
     use gpui::actions;
@@ -289,9 +289,17 @@ impl TaskList {
                             .when(task.date.is_some(), |el| {
                                 el.child(
                                     div()
+                                        .flex()
+                                        .items_center()
+                                        .gap(px(2.0))
                                         .flex_shrink_0()
                                         .text_xs()
                                         .text_color(cx.theme().info)
+                                        .child(
+                                            Icon::new(IconName::Calendar)
+                                                .size(px(12.0))
+                                                .text_color(cx.theme().info),
+                                        )
                                         .child(task.formatted_date().unwrap()),
                                 )
                             }),
