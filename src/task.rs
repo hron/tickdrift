@@ -1,3 +1,4 @@
+use chrono::NaiveDate;
 use gpui::SharedString;
 
 #[derive(Clone, Copy, PartialEq, Default, Debug)]
@@ -15,6 +16,7 @@ pub struct Task {
     pub description: SharedString,
     pub completed: bool,
     pub priority: Priority,
+    pub date: Option<NaiveDate>,
 }
 
 impl Task {
@@ -24,6 +26,7 @@ impl Task {
             description: String::new().into(),
             completed,
             priority: Priority::default(),
+            date: None,
         }
     }
 
@@ -35,5 +38,14 @@ impl Task {
     pub fn with_priority(mut self, priority: Priority) -> Self {
         self.priority = priority;
         self
+    }
+
+    pub fn with_date(mut self, date: NaiveDate) -> Self {
+        self.date = Some(date);
+        self
+    }
+
+    pub fn formatted_date(&self) -> Option<String> {
+        self.date.map(|d| d.format("%a %d %b").to_string())
     }
 }

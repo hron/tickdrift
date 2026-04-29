@@ -143,8 +143,15 @@ impl TaskList {
             return;
         }
         let task = &self.tasks[index];
-        let editor =
-            cx.new(|cx| TaskEditor::new(task.title.clone(), task.description.clone(), window, cx));
+        let editor = cx.new(|cx| {
+            TaskEditor::new(
+                task.title.clone(),
+                task.description.clone(),
+                task.date,
+                window,
+                cx,
+            )
+        });
         self._editor_subscription = Some(cx.subscribe_in(
             &editor,
             window,
@@ -186,14 +193,16 @@ impl TaskList {
 
     fn update_task(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(editor) = &self.task_editor {
-            let (title, description) = editor.update(cx, |editor, cx| {
+            let (title, description, date) = editor.update(cx, |editor, cx| {
                 (
                     editor.task_title_input.read(cx).value(),
                     editor.task_desc_input.read(cx).value(),
+                    editor.date,
                 )
             });
             self.tasks[self.selected_index].title = title;
             self.tasks[self.selected_index].description = description;
+            self.tasks[self.selected_index].date = date;
         }
         self.close_edit(window, cx);
     }
@@ -284,6 +293,15 @@ impl TaskList {
                                         .whitespace_nowrap()
                                         .child(short_description)
                                         .when(!is_multi_line, |el| el.text_ellipsis()),
+                                )
+                            })
+                            .when(task.date.is_some(), |el| {
+                                el.child(
+                                    div()
+                                        .flex_shrink_0()
+                                        .text_xs()
+                                        .text_color(cx.theme().info)
+                                        .child(task.formatted_date().unwrap()),
                                 )
                             }),
                     ),

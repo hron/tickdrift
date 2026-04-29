@@ -1,13 +1,15 @@
 use self::actions::{MoveEditDown, MoveEditUp, SaveEdit, StopEditing};
+use chrono::NaiveDate;
 use gpui::{
     App, AppContext, Context, Entity, EventEmitter, FocusHandle, Focusable, InteractiveElement,
-    KeyBinding, ParentElement, Render, Styled, Window, div, rems,
+    KeyBinding, ParentElement, Render, Styled, Window, div, px, rems,
 };
 use gpui_component::ActiveTheme;
 use gpui_component::StyledExt;
 use gpui_component::divider::Divider;
 use gpui_component::input::{Input, InputEvent, InputState};
-use gpui_component::{button::Button, button::ButtonVariants as _, h_flex, v_flex};
+use gpui_component::popover::Popover;
+use gpui_component::{Sizable, button::Button, button::ButtonVariants as _, h_flex, v_flex};
 
 pub mod actions {
     use gpui::actions;
@@ -27,6 +29,7 @@ pub enum TaskEditorEvent {
 pub struct TaskEditor {
     pub task_title_input: Entity<InputState>,
     pub task_desc_input: Entity<InputState>,
+    pub date: Option<NaiveDate>,
     focus_handle: FocusHandle,
     _subscriptions: Vec<gpui::Subscription>,
 }
@@ -43,6 +46,7 @@ impl TaskEditor {
     pub fn new(
         title: impl Into<String>,
         description: impl Into<String>,
+        date: Option<NaiveDate>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -102,10 +106,11 @@ impl TaskEditor {
         let mut editor = Self {
             task_title_input,
             task_desc_input,
+            date,
             focus_handle,
             _subscriptions,
         };
-        editor.set_values(title, description, window, cx);
+        editor.set_values(title, description, date, window, cx);
         editor
     }
 
@@ -113,9 +118,11 @@ impl TaskEditor {
         &mut self,
         title: String,
         description: String,
+        date: Option<NaiveDate>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.date = date;
         self.task_title_input.update(cx, |input_state, cx| {
             cx.focus_self(window);
             input_state.set_value(title, window, cx);
@@ -124,11 +131,22 @@ impl TaskEditor {
             input_state.set_value(description, window, cx);
         });
     }
+
+    fn date_label(&self) -> String {
+        self.date
+            .map(|d| d.format("%a %d %b").to_string())
+            .unwrap_or_else(|| "Date".to_string())
+    }
 }
 
 impl Render for TaskEditor {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl gpui::IntoElement {
         let border_color = cx.theme().accent_foreground;
+        let today = chrono::Local::now().date_naive();
+        let tomorrow = today + chrono::Duration::days(1);
+        let next_week = today + chrono::Duration::days(7);
+        let editor = cx.entity();
+
         v_flex()
             .key_context("TaskEditor")
             .track_focus(&self.focus_handle(cx))
@@ -160,6 +178,82 @@ impl Render for TaskEditor {
                     .text_xs()
                     .child(Input::new(&self.task_desc_input).appearance(false))
                     .key_context("TaskDescriptionField"),
+            )
+            .child(
+                h_flex().px(rems(0.75)).pb(rems(0.5)).gap(rems(0.5)).child(
+                    Popover::new("date-popover")
+                        .trigger(
+                            Button::new("date-btn")
+                                .outline()
+                                .small()
+                                .label(self.date_label()),
+                        )
+                        .content(move |_, _, _| {
+                            v_flex()
+                                .gap(px(2.0))
+                                .p_2()
+                                .child({
+                                    let editor = editor.clone();
+                                    Button::new("date-today")
+                                        .ghost()
+                                        .small()
+                                        .label("Today")
+                                        .w_full()
+                                        .justify_start()
+                                        .on_click(move |_, _, cx| {
+                                            editor.update(cx, |editor, cx| {
+                                                editor.date = Some(today);
+                                                cx.notify();
+                                            });
+                                        })
+                                })
+                                .child({
+                                    let editor = editor.clone();
+                                    Button::new("date-tomorrow")
+                                        .ghost()
+                                        .small()
+                                        .label("Tomorrow")
+                                        .w_full()
+                                        .justify_start()
+                                        .on_click(move |_, _, cx| {
+                                            editor.update(cx, |editor, cx| {
+                                                editor.date = Some(tomorrow);
+                                                cx.notify();
+                                            });
+                                        })
+                                })
+                                .child({
+                                    let editor = editor.clone();
+                                    Button::new("date-next-week")
+                                        .ghost()
+                                        .small()
+                                        .label("Next week")
+                                        .w_full()
+                                        .justify_start()
+                                        .on_click(move |_, _, cx| {
+                                            editor.update(cx, |editor, cx| {
+                                                editor.date = Some(next_week);
+                                                cx.notify();
+                                            });
+                                        })
+                                })
+                                .child({
+                                    let editor = editor.clone();
+                                    Button::new("date-clear")
+                                        .ghost()
+                                        .small()
+                                        .label("Clear")
+                                        .w_full()
+                                        .justify_start()
+                                        .on_click(move |_, _, cx| {
+                                            editor.update(cx, |editor, cx| {
+                                                editor.date = None;
+                                                cx.notify();
+                                            });
+                                        })
+                                })
+                        }),
+                ),
             )
             .child(Divider::horizontal().color(border_color))
             .child(

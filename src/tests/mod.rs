@@ -4,6 +4,7 @@ use crate::tickdrift::{
     DEFAULT_FONT_SIZE, MAX_FONT_SIZE, MIN_FONT_SIZE, Tickdrift, ZOOM_STEP, ZoomIn, ZoomOut,
     ZoomReset,
 };
+use chrono::NaiveDate;
 use gpui::{AppContext as _, Entity, VisualTestContext};
 use gpui_component::Root;
 
@@ -174,4 +175,17 @@ async fn test_integration_lifecycle(cx: &mut gpui::TestAppContext) {
         assert_eq!(tl.tasks[3].title.as_ref(), "Task D");
         assert!(!tl.tasks[3].completed);
     });
+}
+
+#[gpui::test]
+async fn test_task_date_field(_cx: &mut gpui::TestAppContext) {
+    let date = NaiveDate::from_ymd_opt(2026, 4, 28).unwrap();
+    let task = Task::new("Task with date", false).with_date(date);
+
+    assert_eq!(task.date, Some(date));
+    assert_eq!(task.formatted_date(), Some("Tue 28 Apr".to_string()));
+
+    let task_without_date = Task::new("Task without date", false);
+    assert_eq!(task_without_date.date, None);
+    assert_eq!(task_without_date.formatted_date(), None);
 }
