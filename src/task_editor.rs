@@ -1,62 +1,18 @@
 use self::actions::{MoveEditDown, MoveEditUp, OpenDatePicker, SaveEdit, StopEditing};
 use chrono::NaiveDate;
 use gpui::{
-    App, AppContext, Context, Entity, EventEmitter, FocusHandle, Focusable, InteractiveElement,
-    IntoElement, KeyBinding, ParentElement, Render, RenderOnce, SharedString, Styled, Window, div,
-    px, rems,
+    App, AppContext, Context, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable,
+    InteractiveElement, KeyBinding, ParentElement, Render, SharedString, Styled, Window, div, rems,
 };
 use gpui_component::ActiveTheme;
 use gpui_component::StyledExt;
 use gpui_component::divider::Divider;
 use gpui_component::input::{Input, InputEvent, InputState};
-use gpui_component::popover::{Popover, PopoverState};
+use gpui_component::menu::{PopupMenu, PopupMenuItem};
+use gpui_component::popover::Popover;
 use gpui_component::{
-    IconName, Selectable, Sizable, button::Button, button::ButtonVariants as _, h_flex, v_flex,
+    IconName, Sizable, button::Button, button::ButtonVariants as _, h_flex, v_flex,
 };
-use std::cell::RefCell;
-use std::rc::Rc;
-
-#[derive(IntoElement)]
-struct DateTrigger {
-    label: String,
-    state_store: Rc<RefCell<Option<Entity<PopoverState>>>>,
-    selected: bool,
-}
-
-impl Selectable for DateTrigger {
-    fn selected(mut self, selected: bool) -> Self {
-        self.selected = selected;
-        self
-    }
-
-    fn is_selected(&self) -> bool {
-        self.selected
-    }
-}
-
-impl RenderOnce for DateTrigger {
-    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let state =
-            window.use_keyed_state("date-popover", cx, |_, cx| PopoverState::new(false, cx));
-        *self.state_store.borrow_mut() = Some(state.clone());
-
-        Button::new("date-btn")
-            .outline()
-            .small()
-            .icon(IconName::Calendar)
-            .label(self.label)
-            .selected(self.selected)
-            .on_click(move |_, window, cx| {
-                state.update(cx, |state, cx| {
-                    if state.is_open() {
-                        state.dismiss(window, cx);
-                    } else {
-                        state.show(window, cx);
-                    }
-                });
-            })
-    }
-}
 
 pub mod actions {
     use gpui::actions;
@@ -87,8 +43,10 @@ pub struct TaskEditor {
     pub task_title_input: Entity<InputState>,
     pub task_desc_input: Entity<InputState>,
     pub date: Option<NaiveDate>,
+    pub date_menu: Option<Entity<PopupMenu>>,
+    pub date_popover_open: bool,
+    previous_focus: Option<FocusHandle>,
     focus_handle: FocusHandle,
-    date_popover_state_store: Rc<RefCell<Option<Entity<PopoverState>>>>,
     _subscriptions: Vec<gpui::Subscription>,
 }
 
@@ -180,8 +138,10 @@ impl TaskEditor {
             task_title_input,
             task_desc_input,
             date,
+            date_menu: None,
+            date_popover_open: false,
+            previous_focus: None,
             focus_handle,
-            date_popover_state_store: Rc::new(RefCell::new(None)),
             _subscriptions,
         };
         editor.set_values(title, description, date, window, cx);
@@ -214,10 +174,77 @@ impl TaskEditor {
 }
 
 impl Render for TaskEditor {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl gpui::IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl gpui::IntoElement {
         let border_color = cx.theme().accent_foreground;
         let editor = cx.entity();
-        let store = self.date_popover_state_store.clone();
+
+        // Build the popup menu once and reuse it via element state.
+        let menu_state = window.use_keyed_state("date-menu", cx, |window, cx| {
+            let editor_for_items = editor.clone();
+            let editor_for_dismiss = editor.clone();
+            let menu = PopupMenu::build(window, cx, move |menu, _, _| {
+                menu.item(PopupMenuItem::new("Today").on_click({
+                    let editor = editor_for_items.clone();
+                    move |_, _window, cx| {
+                        editor.update(cx, |editor, cx| {
+                            editor.date = Some(chrono::Local::now().date_naive());
+                            editor.date_popover_open = false;
+                            cx.notify();
+                        });
+                    }
+                }))
+                .item(PopupMenuItem::new("Tomorrow").on_click({
+                    let editor = editor_for_items.clone();
+                    move |_, _window, cx| {
+                        editor.update(cx, |editor, cx| {
+                            editor.date =
+                                Some(chrono::Local::now().date_naive() + chrono::Duration::days(1));
+                            editor.date_popover_open = false;
+                            cx.notify();
+                        });
+                    }
+                }))
+                .item(PopupMenuItem::new("Next week").on_click({
+                    let editor = editor_for_items.clone();
+                    move |_, _window, cx| {
+                        editor.update(cx, |editor, cx| {
+                            editor.date =
+                                Some(chrono::Local::now().date_naive() + chrono::Duration::days(7));
+                            editor.date_popover_open = false;
+                            cx.notify();
+                        });
+                    }
+                }))
+                .item(PopupMenuItem::new("Clear").on_click({
+                    let editor = editor_for_items.clone();
+                    move |_, _window, cx| {
+                        editor.update(cx, |editor, cx| {
+                            editor.date = None;
+                            editor.date_popover_open = false;
+                            cx.notify();
+                        });
+                    }
+                }))
+            });
+
+            // Subscribe to menu dismiss so we can close the popover on Escape.
+            window
+                .subscribe(&menu, cx, move |_, _: &DismissEvent, _window, cx| {
+                    editor_for_dismiss.update(cx, |editor, cx| {
+                        editor.date_popover_open = false;
+                        cx.notify();
+                    });
+                })
+                .detach();
+
+            menu
+        });
+        let menu_entity = menu_state.read(cx).clone();
+        let menu_focus = menu_state.read(cx).focus_handle(cx);
+        self.date_menu = Some(menu_entity.clone());
+
+        let editor = cx.entity();
+        let date_popover_open = self.date_popover_open;
 
         v_flex()
             .key_context("TaskEditor")
@@ -241,11 +268,6 @@ impl Render for TaskEditor {
             .on_action(cx.listener(|_this, _: &MoveEditDown, _window, cx| {
                 cx.emit(TaskEditorEvent::MoveEditDown);
             }))
-            .on_action(cx.listener(|this, _: &OpenDatePicker, window, cx| {
-                if let Some(state) = this.date_popover_state_store.borrow().clone() {
-                    state.update(cx, |state, cx| state.show(window, cx));
-                }
-            }))
             .border_1()
             .border_color(border_color)
             .rounded(rems(0.375))
@@ -265,103 +287,42 @@ impl Render for TaskEditor {
             )
             .child(
                 h_flex().px(rems(0.75)).pb(rems(0.5)).gap(rems(0.5)).child(
-                    div().key_context("TaskEditorDateButton").child(
-                        Popover::new("date-popover")
-                            .trigger(DateTrigger {
-                                label: self.date_label(),
-                                state_store: store.clone(),
-                                selected: false,
-                            })
-                            .content(move |_, _window, _cx| {
-                                let state = store.borrow().clone().unwrap();
-                                v_flex()
-                                    .gap(px(2.0))
-                                    .p_2()
-                                    .child({
-                                        let editor = editor.clone();
-                                        let state = state.clone();
-                                        Button::new("date-today")
-                                            .ghost()
-                                            .small()
-                                            .label("Today")
-                                            .w_full()
-                                            .justify_start()
-                                            .on_click(move |_, window, cx| {
-                                                editor.update(cx, |editor, cx| {
-                                                    editor.date =
-                                                        Some(chrono::Local::now().date_naive());
-                                                    state.update(cx, |state, cx| {
-                                                        state.dismiss(window, cx)
-                                                    });
-                                                    cx.notify();
-                                                });
-                                            })
-                                    })
-                                    .child({
-                                        let editor = editor.clone();
-                                        let state = state.clone();
-                                        Button::new("date-tomorrow")
-                                            .ghost()
-                                            .small()
-                                            .label("Tomorrow")
-                                            .w_full()
-                                            .justify_start()
-                                            .on_click(move |_, window, cx| {
-                                                editor.update(cx, |editor, cx| {
-                                                    editor.date = Some(
-                                                        chrono::Local::now().date_naive()
-                                                            + chrono::Duration::days(1),
-                                                    );
-                                                    state.update(cx, |state, cx| {
-                                                        state.dismiss(window, cx)
-                                                    });
-                                                    cx.notify();
-                                                });
-                                            })
-                                    })
-                                    .child({
-                                        let editor = editor.clone();
-                                        let state = state.clone();
-                                        Button::new("date-next-week")
-                                            .ghost()
-                                            .small()
-                                            .label("Next week")
-                                            .w_full()
-                                            .justify_start()
-                                            .on_click(move |_, window, cx| {
-                                                editor.update(cx, |editor, cx| {
-                                                    editor.date = Some(
-                                                        chrono::Local::now().date_naive()
-                                                            + chrono::Duration::days(7),
-                                                    );
-                                                    state.update(cx, |state, cx| {
-                                                        state.dismiss(window, cx)
-                                                    });
-                                                    cx.notify();
-                                                });
-                                            })
-                                    })
-                                    .child({
-                                        let editor = editor.clone();
-                                        let state = state.clone();
-                                        Button::new("date-clear")
-                                            .ghost()
-                                            .small()
-                                            .label("Clear")
-                                            .w_full()
-                                            .justify_start()
-                                            .on_click(move |_, window, cx| {
-                                                editor.update(cx, |editor, cx| {
-                                                    editor.date = None;
-                                                    state.update(cx, |state, cx| {
-                                                        state.dismiss(window, cx)
-                                                    });
-                                                    cx.notify();
-                                                });
-                                            })
-                                    })
-                            }),
-                    ),
+                    div()
+                        .key_context("TaskEditorDateButton")
+                        .on_action(cx.listener({
+                            let menu_focus = menu_focus.clone();
+                            move |this, _: &OpenDatePicker, window, cx| {
+                                this.previous_focus = window.focused(cx);
+                                this.date_popover_open = true;
+                                cx.notify();
+                                menu_focus.focus(window, cx);
+                            }
+                        }))
+                        .child(
+                            Popover::new("date-popover")
+                                .open(date_popover_open)
+                                .on_open_change(move |open, window, cx| {
+                                    if !open {
+                                        if let Some(prev) = editor.read(&*cx).previous_focus.clone()
+                                        {
+                                            prev.focus(window, cx);
+                                        }
+                                    }
+                                    editor.update(cx, |editor, _| {
+                                        editor.date_popover_open = *open;
+                                    });
+                                })
+                                .track_focus(&menu_focus)
+                                .appearance(false)
+                                .trigger(
+                                    Button::new("date-btn")
+                                        .outline()
+                                        .small()
+                                        .icon(IconName::Calendar)
+                                        .label(self.date_label()),
+                                )
+                                .content(move |_, _, _| menu_entity.clone()),
+                        ),
                 ),
             )
             .child(Divider::horizontal().color(border_color))
@@ -401,10 +362,11 @@ impl Render for TaskEditor {
 mod tests {
     use crate::{
         task::Task,
-        task_editor::actions::{MoveEditDown, MoveEditUp, OpenDatePicker, SaveEdit, StopEditing},
+        task_editor::actions::{MoveEditDown, MoveEditUp, SaveEdit, StopEditing},
         task_list_view::actions::StartEditing,
         tests::{build_test_app, default_todos},
     };
+    use gpui::Focusable;
 
     #[gpui::test]
     async fn test_start_stop_editing(cx: &mut gpui::TestAppContext) {
@@ -543,16 +505,28 @@ mod tests {
     #[gpui::test]
     async fn test_enter_opens_date_popover(cx: &mut gpui::TestAppContext) {
         let tasks = vec![Task::new("Task one", false)];
-        let (task_list_entity, cx) = build_test_app(cx, tasks);
-        let task_list = task_list_entity.read_with(cx, |mw, _| mw.task_list.clone());
+        let (app, cx) = build_test_app(cx, tasks);
+        let task_list = app.read_with(cx, |mw, _| mw.task_list.clone());
 
         cx.dispatch_action(StartEditing);
+        // Tab to description, Tab to date button, Enter to open popover
+        cx.simulate_keystrokes("tab tab enter");
+
         let editor = task_list.read_with(cx, |tl, _| tl.task_editor.clone().unwrap());
 
-        cx.dispatch_action(OpenDatePicker);
-        editor.read_with(cx, |ed, cx| {
-            let state = ed.date_popover_state_store.borrow().clone().unwrap();
-            state.read_with(cx, |state, _| assert!(state.is_open()));
-        });
+        // Verify the popover is open
+        assert!(
+            editor.read_with(cx, |ed, _| ed.date_popover_open),
+            "popover should be open after pressing Enter on date button"
+        );
+
+        // Verify focus moved to the menu
+        let menu = editor.read_with(cx, |ed, _| ed.date_menu.clone().unwrap());
+        let menu_focused =
+            cx.update(|window, cx| menu.read(&*cx).focus_handle(&*cx).is_focused(window));
+        assert!(
+            menu_focused,
+            "date menu should be focused after pressing Enter on date button"
+        );
     }
 }
