@@ -185,54 +185,64 @@ impl Render for TaskEditor {
             let menu = PopupMenu::build(window, cx, move |menu, _, _| {
                 menu.item(PopupMenuItem::new("Today").on_click({
                     let editor = editor_for_items.clone();
-                    move |_, _window, cx| {
-                        editor.update(cx, |editor, cx| {
+                    move |_, window, cx| {
+                        editor.update(cx, |editor, _cx| {
                             editor.date = Some(chrono::Local::now().date_naive());
                             editor.date_popover_open = false;
-                            cx.notify();
                         });
+                        if let Some(prev) = editor.read(cx).previous_focus.clone() {
+                            prev.focus(window, cx);
+                        }
                     }
                 }))
                 .item(PopupMenuItem::new("Tomorrow").on_click({
                     let editor = editor_for_items.clone();
-                    move |_, _window, cx| {
-                        editor.update(cx, |editor, cx| {
+                    move |_, window, cx| {
+                        editor.update(cx, |editor, _cx| {
                             editor.date =
                                 Some(chrono::Local::now().date_naive() + chrono::Duration::days(1));
                             editor.date_popover_open = false;
-                            cx.notify();
                         });
+                        if let Some(prev) = editor.read(cx).previous_focus.clone() {
+                            prev.focus(window, cx);
+                        }
                     }
                 }))
                 .item(PopupMenuItem::new("Next week").on_click({
                     let editor = editor_for_items.clone();
-                    move |_, _window, cx| {
-                        editor.update(cx, |editor, cx| {
+                    move |_, window, cx| {
+                        editor.update(cx, |editor, _cx| {
                             editor.date =
                                 Some(chrono::Local::now().date_naive() + chrono::Duration::days(7));
                             editor.date_popover_open = false;
-                            cx.notify();
                         });
+                        if let Some(prev) = editor.read(cx).previous_focus.clone() {
+                            prev.focus(window, cx);
+                        }
                     }
                 }))
                 .item(PopupMenuItem::new("Clear").on_click({
                     let editor = editor_for_items.clone();
-                    move |_, _window, cx| {
-                        editor.update(cx, |editor, cx| {
+                    move |_, window, cx| {
+                        editor.update(cx, |editor, _cx| {
                             editor.date = None;
                             editor.date_popover_open = false;
-                            cx.notify();
                         });
+                        if let Some(prev) = editor.read(cx).previous_focus.clone() {
+                            prev.focus(window, cx);
+                        }
                     }
                 }))
             });
 
             // Subscribe to menu dismiss so we can close the popover on Escape.
             window
-                .subscribe(&menu, cx, move |_, _: &DismissEvent, _window, cx| {
-                    editor_for_dismiss.update(cx, |editor, cx| {
+                .subscribe(&menu, cx, move |_, _: &DismissEvent, window, cx| {
+                    if let Some(prev) = editor_for_dismiss.read(cx).previous_focus.clone() {
+                        prev.focus(window, cx);
+                    }
+                    editor_for_dismiss.update(cx, |editor, _cx| {
                         editor.date_popover_open = false;
-                        cx.notify();
                     });
                 })
                 .detach();
@@ -527,6 +537,39 @@ mod tests {
         assert!(
             menu_focused,
             "date menu should be focused after pressing Enter on date button"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_escape_closes_date_popover_and_restores_focus(cx: &mut gpui::TestAppContext) {
+        let tasks = vec![Task::new("Task one", false)];
+        let (app, cx) = build_test_app(cx, tasks);
+        let task_list = app.read_with(cx, |mw, _| mw.task_list.clone());
+
+        cx.dispatch_action(StartEditing);
+        cx.simulate_keystrokes("tab tab enter");
+
+        let editor = task_list.read_with(cx, |tl, _| tl.task_editor.clone().unwrap());
+        let prev_focus = editor.read_with(cx, |ed, _| ed.previous_focus.clone());
+        assert!(
+            prev_focus.is_some(),
+            "previous_focus should be saved when opening popover"
+        );
+
+        // Press Escape to close the popover
+        cx.simulate_keystrokes("escape");
+
+        // Verify the popover is closed
+        assert!(
+            !editor.read_with(cx, |ed, _| ed.date_popover_open),
+            "popover should be closed after pressing Escape"
+        );
+
+        // Verify focus was restored to the date button
+        let focused = cx.update(|window, cx| window.focused(cx));
+        assert_eq!(
+            focused, prev_focus,
+            "focus should be restored to the date button after Escape"
         );
     }
 }
