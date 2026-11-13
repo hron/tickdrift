@@ -1,4 +1,5 @@
 use gpui_component_assets::Assets;
+mod date_picker;
 mod task;
 mod task_editor;
 mod task_list_view;

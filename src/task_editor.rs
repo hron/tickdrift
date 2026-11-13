@@ -1,14 +1,14 @@
 use self::actions::{MoveEditDown, MoveEditUp, OpenDatePicker, SaveEdit, StopEditing};
+use crate::date_picker::{DatePicker, DatePickerEvent, date_label};
 use chrono::NaiveDate;
 use gpui::{
-    App, AppContext, Context, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable,
-    InteractiveElement, KeyBinding, ParentElement, Render, SharedString, Styled, Window, div, rems,
+    App, AppContext, Context, Entity, EventEmitter, FocusHandle, Focusable, InteractiveElement,
+    KeyBinding, ParentElement, Render, SharedString, Styled, Window, div, rems,
 };
 use gpui_component::ActiveTheme;
 use gpui_component::StyledExt;
 use gpui_component::divider::Divider;
 use gpui_component::input::{Input, InputEvent, InputState};
-use gpui_component::menu::{PopupMenu, PopupMenuItem};
 use gpui_component::popover::Popover;
 use gpui_component::{
     IconName, Sizable, button::Button, button::ButtonVariants as _, h_flex, v_flex,
@@ -43,7 +43,7 @@ pub struct TaskEditor {
     pub task_title_input: Entity<InputState>,
     pub task_desc_input: Entity<InputState>,
     pub date: Option<NaiveDate>,
-    pub date_menu: Option<Entity<PopupMenu>>,
+    pub date_picker: Entity<DatePicker>,
     pub date_popover_open: bool,
     previous_focus: Option<FocusHandle>,
     focus_handle: FocusHandle,
@@ -134,11 +134,23 @@ impl TaskEditor {
             },
         ));
 
+        let date_picker = cx.new(|cx| DatePicker::new(date, today(), window, cx));
+        _subscriptions.push(cx.subscribe_in(
+            &date_picker,
+            window,
+            |this, _picker, event, window, cx| {
+                if let DatePickerEvent::Picked(date) = event {
+                    this.date = *date;
+                }
+                this.close_date_picker(window, cx);
+            },
+        ));
+
         let mut editor = Self {
             task_title_input,
             task_desc_input,
             date,
-            date_menu: None,
+            date_picker,
             date_popover_open: false,
             previous_focus: None,
             focus_handle,
@@ -168,93 +180,39 @@ impl TaskEditor {
 
     fn date_label(&self) -> String {
         self.date
-            .map(|d| d.format("%a %d %b").to_string())
+            .map(|d| date_label(d, today()))
             .unwrap_or_else(|| "Date".to_string())
+    }
+
+    fn open_date_picker(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let date = self.date;
+        self.date_popover_open = true;
+        self.date_picker
+            .update(cx, |picker, cx| picker.open(date, today(), window, cx));
+        cx.notify();
+    }
+
+    fn close_date_picker(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.date_popover_open = false;
+        match self.previous_focus.clone() {
+            Some(prev) => prev.focus(window, cx),
+            None => window.focus(&self.focus_handle, cx),
+        }
+        cx.notify();
     }
 }
 
+fn today() -> NaiveDate {
+    chrono::Local::now().date_naive()
+}
+
 impl Render for TaskEditor {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl gpui::IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl gpui::IntoElement {
         let border_color = cx.theme().accent_foreground;
         let editor = cx.entity();
-
-        // Build the popup menu once and reuse it via element state.
-        let menu_state = window.use_keyed_state("date-menu", cx, |window, cx| {
-            let editor_for_items = editor.clone();
-            let editor_for_dismiss = editor.clone();
-            let menu = PopupMenu::build(window, cx, move |menu, _, _| {
-                menu.item(PopupMenuItem::new("Today").on_click({
-                    let editor = editor_for_items.clone();
-                    move |_, window, cx| {
-                        editor.update(cx, |editor, _cx| {
-                            editor.date = Some(chrono::Local::now().date_naive());
-                            editor.date_popover_open = false;
-                        });
-                        if let Some(prev) = editor.read(cx).previous_focus.clone() {
-                            prev.focus(window, cx);
-                        }
-                    }
-                }))
-                .item(PopupMenuItem::new("Tomorrow").on_click({
-                    let editor = editor_for_items.clone();
-                    move |_, window, cx| {
-                        editor.update(cx, |editor, _cx| {
-                            editor.date =
-                                Some(chrono::Local::now().date_naive() + chrono::Duration::days(1));
-                            editor.date_popover_open = false;
-                        });
-                        if let Some(prev) = editor.read(cx).previous_focus.clone() {
-                            prev.focus(window, cx);
-                        }
-                    }
-                }))
-                .item(PopupMenuItem::new("Next week").on_click({
-                    let editor = editor_for_items.clone();
-                    move |_, window, cx| {
-                        editor.update(cx, |editor, _cx| {
-                            editor.date =
-                                Some(chrono::Local::now().date_naive() + chrono::Duration::days(7));
-                            editor.date_popover_open = false;
-                        });
-                        if let Some(prev) = editor.read(cx).previous_focus.clone() {
-                            prev.focus(window, cx);
-                        }
-                    }
-                }))
-                .item(PopupMenuItem::new("Clear").on_click({
-                    let editor = editor_for_items.clone();
-                    move |_, window, cx| {
-                        editor.update(cx, |editor, _cx| {
-                            editor.date = None;
-                            editor.date_popover_open = false;
-                        });
-                        if let Some(prev) = editor.read(cx).previous_focus.clone() {
-                            prev.focus(window, cx);
-                        }
-                    }
-                }))
-            });
-
-            // Subscribe to menu dismiss so we can close the popover on Escape.
-            window
-                .subscribe(&menu, cx, move |_, _: &DismissEvent, window, cx| {
-                    if let Some(prev) = editor_for_dismiss.read(cx).previous_focus.clone() {
-                        prev.focus(window, cx);
-                    }
-                    editor_for_dismiss.update(cx, |editor, _cx| {
-                        editor.date_popover_open = false;
-                    });
-                })
-                .detach();
-
-            menu
-        });
-        let menu_entity = menu_state.read(cx).clone();
-        let menu_focus = menu_state.read(cx).focus_handle(cx);
-        self.date_menu = Some(menu_entity.clone());
-
-        let editor = cx.entity();
         let date_popover_open = self.date_popover_open;
+        let picker = self.date_picker.clone();
+        let picker_focus = picker.read(cx).focus_handle(cx);
 
         v_flex()
             .key_context("TaskEditor")
@@ -299,30 +257,25 @@ impl Render for TaskEditor {
                 h_flex().px(rems(0.75)).pb(rems(0.5)).gap(rems(0.5)).child(
                     div()
                         .key_context("TaskEditorDateButton")
-                        .on_action(cx.listener({
-                            let menu_focus = menu_focus.clone();
-                            move |this, _: &OpenDatePicker, window, cx| {
-                                this.previous_focus = window.focused(cx);
-                                this.date_popover_open = true;
-                                cx.notify();
-                                menu_focus.focus(window, cx);
-                            }
+                        .on_action(cx.listener(|this, _: &OpenDatePicker, window, cx| {
+                            this.previous_focus = window.focused(cx);
+                            this.open_date_picker(window, cx);
                         }))
                         .child(
                             Popover::new("date-popover")
                                 .open(date_popover_open)
                                 .on_open_change(move |open, window, cx| {
-                                    if !open {
-                                        if let Some(prev) = editor.read(&*cx).previous_focus.clone()
-                                        {
-                                            prev.focus(window, cx);
+                                    editor.update(cx, |editor, cx| {
+                                        if *open {
+                                            // Opened by mouse: nothing to return focus to.
+                                            editor.previous_focus = None;
+                                            editor.open_date_picker(window, cx);
+                                        } else {
+                                            editor.close_date_picker(window, cx);
                                         }
-                                    }
-                                    editor.update(cx, |editor, _| {
-                                        editor.date_popover_open = *open;
                                     });
                                 })
-                                .track_focus(&menu_focus)
+                                .track_focus(&picker_focus)
                                 .appearance(false)
                                 .trigger(
                                     Button::new("date-btn")
@@ -331,7 +284,7 @@ impl Render for TaskEditor {
                                         .icon(IconName::Calendar)
                                         .label(self.date_label()),
                                 )
-                                .content(move |_, _, _| menu_entity.clone()),
+                                .content(move |_, _, _| picker.clone()),
                         ),
                 ),
             )
@@ -530,14 +483,92 @@ mod tests {
             "popover should be open after pressing Enter on date button"
         );
 
-        // Verify focus moved to the menu
-        let menu = editor.read_with(cx, |ed, _| ed.date_menu.clone().unwrap());
-        let menu_focused =
-            cx.update(|window, cx| menu.read(&*cx).focus_handle(&*cx).is_focused(window));
+        // Verify focus moved into the date picker
+        let picker = editor.read_with(cx, |ed, _| ed.date_picker.clone());
+        let picker_focused = cx.update(|window, cx| {
+            picker
+                .read(&*cx)
+                .focus_handle(&*cx)
+                .contains_focused(window, cx)
+        });
         assert!(
-            menu_focused,
-            "date menu should be focused after pressing Enter on date button"
+            picker_focused,
+            "date picker should be focused after pressing Enter on date button"
         );
+    }
+
+    fn open_date_picker(
+        cx: &mut gpui::VisualTestContext,
+        task_list: &gpui::Entity<crate::task_list_view::TaskList>,
+    ) -> gpui::Entity<crate::task_editor::TaskEditor> {
+        cx.dispatch_action(StartEditing);
+        cx.simulate_keystrokes("tab tab enter");
+        let editor = task_list.read_with(cx, |tl, _| tl.task_editor.clone().unwrap());
+        assert!(editor.read_with(cx, |ed, _| ed.date_popover_open));
+        editor
+    }
+
+    fn today() -> chrono::NaiveDate {
+        chrono::Local::now().date_naive()
+    }
+
+    #[gpui::test]
+    async fn test_date_picker_arrow_down_picks_tomorrow(cx: &mut gpui::TestAppContext) {
+        let (app, cx) = build_test_app(cx, vec![Task::new("Task one", false)]);
+        let task_list = app.read_with(cx, |mw, _| mw.task_list.clone());
+        let editor = open_date_picker(cx, &task_list);
+
+        // input -> Today -> Tomorrow
+        cx.simulate_keystrokes("down down enter");
+
+        editor.read_with(cx, |ed, _| {
+            assert!(!ed.date_popover_open);
+            assert_eq!(ed.date, Some(today() + chrono::Days::new(1)));
+        });
+    }
+
+    #[gpui::test]
+    async fn test_date_picker_calendar_navigation(cx: &mut gpui::TestAppContext) {
+        let (app, cx) = build_test_app(cx, vec![Task::new("Task one", false)]);
+        let task_list = app.read_with(cx, |mw, _| mw.task_list.clone());
+        let editor = open_date_picker(cx, &task_list);
+
+        // input -> 4 suggestions -> calendar (lands on today)
+        cx.simulate_keystrokes("tab tab tab tab tab right right enter");
+
+        editor.read_with(cx, |ed, _| {
+            assert!(!ed.date_popover_open);
+            assert_eq!(ed.date, Some(today() + chrono::Days::new(2)));
+        });
+    }
+
+    #[gpui::test]
+    async fn test_date_picker_typed_date(cx: &mut gpui::TestAppContext) {
+        let (app, cx) = build_test_app(cx, vec![Task::new("Task one", false)]);
+        let task_list = app.read_with(cx, |mw, _| mw.task_list.clone());
+        let editor = open_date_picker(cx, &task_list);
+
+        cx.simulate_input("tom");
+        cx.simulate_keystrokes("enter");
+
+        editor.read_with(cx, |ed, _| {
+            assert!(!ed.date_popover_open);
+            assert_eq!(ed.date, Some(today() + chrono::Days::new(1)));
+        });
+        // Still editing: Enter in the picker must not save the task.
+        task_list.read_with(cx, |tl, _| assert!(tl.is_editing));
+    }
+
+    #[gpui::test]
+    async fn test_date_picker_no_date_clears(cx: &mut gpui::TestAppContext) {
+        let date = chrono::NaiveDate::from_ymd_opt(2026, 4, 9).unwrap();
+        let (app, cx) = build_test_app(cx, vec![Task::new("Task one", false).with_date(date)]);
+        let task_list = app.read_with(cx, |mw, _| mw.task_list.clone());
+        let editor = open_date_picker(cx, &task_list);
+
+        cx.simulate_keystrokes("down down down down enter");
+
+        editor.read_with(cx, |ed, _| assert_eq!(ed.date, None));
     }
 
     #[gpui::test]
