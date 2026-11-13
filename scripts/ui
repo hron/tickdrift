@@ -2,7 +2,8 @@
 # Run tickdrift inside an isolated headless Wayland compositor (cage) exposed
 # over VNC (wayvnc), so the app can be screenshotted and driven from the CLI.
 #
-#   scripts/ui up            start cage (headless) + wayvnc on 127.0.0.1:$UI_VNC_PORT
+#   scripts/ui up            (re)start cage (headless) + wayvnc on 127.0.0.1:$UI_VNC_PORT,
+#                            killing leftovers from earlier sessions first
 #   scripts/ui run           cargo build + (re)start the app inside that cage
 #   scripts/ui shot [name]   save a screenshot to target/ui/shots/<name>.png
 #   scripts/ui key K...      press keys (vncdotool names: down, enter, esc, ctrl-s, ...)
@@ -36,9 +37,26 @@ vncdo_() { vncdo -s "$VNC" key shift pause 0.2 "$@"; }
 
 socket() { cat "$STATE/socket"; }
 
+# Private wayvnc control socket, so we never collide with another wayvnc
+# (the default is the shared $XDG_RUNTIME_DIR/wayvncctl).
+CTL="$STATE/wayvncctl"
+
+# Kill every process started by this script, including orphans whose pid
+# files were lost. Patterns only match our own command lines.
+reset() {
+  cmd_down >/dev/null
+  pkill -f -- "-S $CTL" 2>/dev/null || true
+  pkill -f -- "^wayvnc 127\.0\.0\.1 $PORT\$" 2>/dev/null || true
+  pkill -f -- "$STATE/socket" 2>/dev/null || true
+  for _ in $(seq 20); do
+    pgrep -f -- "-S $CTL|^wayvnc 127\.0\.0\.1 $PORT\$|$STATE/socket" >/dev/null || break
+    sleep 0.1
+  done
+  rm -f "$STATE/socket" "$CTL"
+}
+
 cmd_up() {
-  if is_running "$STATE/cage.pid"; then echo "cage already running"; return; fi
-  rm -f "$STATE/socket"
+  reset
   # cage exits when its child exits, so the child just records the socket
   # name and sleeps; apps are launched separately against that socket.
   env -u DISPLAY -u WAYLAND_DISPLAY \
@@ -60,7 +78,7 @@ cmd_up() {
     echo "up: wayland=$(socket) (wayvnc not installed: no VNC, no key/click input)"
     return
   fi
-  WAYLAND_DISPLAY="$(socket)" wayvnc 127.0.0.1 "$PORT" >"$STATE/wayvnc.log" 2>&1 &
+  WAYLAND_DISPLAY="$(socket)" wayvnc -S "$CTL" 127.0.0.1 "$PORT" >"$STATE/wayvnc.log" 2>&1 &
   echo $! >"$STATE/wayvnc.pid"
   sleep 0.5
   if ! is_running "$STATE/wayvnc.pid"; then

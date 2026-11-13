@@ -85,7 +85,7 @@ over VNC (`wayvnc`, `127.0.0.1:5900`) and drives it with `vncdo`. The user's des
 not affected.
 
 ```bash
-scripts/ui up              # start cage + wayvnc (idempotent)
+scripts/ui up              # (re)start cage + wayvnc from a blank slate
 scripts/ui run             # cargo build + (re)start the app
 scripts/ui shot <name>     # -> target/ui/shots/<name>.png, then open it with the Read tool
 scripts/ui key down ctrl-e # vncdotool key names: down, enter, tab, esc, ctrl-e, ...
