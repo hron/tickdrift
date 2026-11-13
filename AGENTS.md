@@ -77,6 +77,30 @@ async fn test_keyboard_navigation(cx: &mut gpui::TestAppContext) {
 }
 ```
 
+### Visual Verification (real app, screenshots, input)
+
+Unit tests check state, not pixels. After any UI change, also check the real app with
+`scripts/ui`. It runs tickdrift in an isolated headless Wayland compositor (`cage`), exposes it
+over VNC (`wayvnc`, `127.0.0.1:5900`) and drives it with `vncdo`. The user's desktop session is
+not affected.
+
+```bash
+scripts/ui up              # start cage + wayvnc (idempotent)
+scripts/ui run             # cargo build + (re)start the app
+scripts/ui shot <name>     # -> target/ui/shots/<name>.png, then open it with the Read tool
+scripts/ui key down ctrl-e # vncdotool key names: down, enter, tab, esc, ctrl-e, ...
+scripts/ui type "text"
+scripts/ui click X Y       # screen coordinates as seen on the screenshot
+scripts/ui logs            # app / cage / wayvnc logs
+scripts/ui down
+```
+
+- Call `scripts/ui` as a plain command (no `cd … &&` prefix). It is excluded from the Claude Code
+  sandbox via `excludedCommands: ["scripts/ui *"]`, because Wayland needs Unix sockets.
+- The app is fullscreen 1280x720 inside cage. Rendering uses the Mesa lavapipe software Vulkan driver.
+- Host packages: `cage`, `wayvnc`, `grim`, `vulkan-swrast`, `vncdotool`.
+- Humans can watch live with any VNC client at `127.0.0.1:5900`.
+
 ## Project Structure
 
 ```

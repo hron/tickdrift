@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+# Run tickdrift inside an isolated headless Wayland compositor (cage) exposed
+# over VNC (wayvnc), so the app can be screenshotted and driven from the CLI.
+#
+#   scripts/ui up            start cage (headless) + wayvnc on 127.0.0.1:$UI_VNC_PORT
+#   scripts/ui run           cargo build + (re)start the app inside that cage
+#   scripts/ui shot [name]   save a screenshot to target/ui/shots/<name>.png
+#   scripts/ui key K...      press keys (vncdotool names: down, enter, esc, ctrl-s, ...)
+#   scripts/ui type TEXT     type text
+#   scripts/ui click X Y     left click at screen coordinates
+#   scripts/ui logs          show app + compositor logs
+#   scripts/ui down          stop everything
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+STATE="$ROOT/target/ui"
+SHOTS="$STATE/shots"
+PORT="${UI_VNC_PORT:-5900}"
+VNC="127.0.0.1::$PORT"
+
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+mkdir -p "$STATE" "$SHOTS"
+
+is_running() { [[ -f "$1" ]] && kill -0 "$(cat "$1")" 2>/dev/null; }
+
+lavapipe_icd() {
+  local icd
+  for icd in /usr/share/vulkan/icd.d/lvp_icd*.json; do
+    [[ -f "$icd" ]] && { echo "$icd"; return; }
+  done
+}
+
+# wayvnc creates a fresh virtual keyboard per VNC connection and the first
+# key event on it is swallowed, so warm it up with a harmless Shift tap.
+vncdo_() { vncdo -s "$VNC" key shift pause 0.2 "$@"; }
+
+socket() { cat "$STATE/socket"; }
+
+cmd_up() {
+  if is_running "$STATE/cage.pid"; then echo "cage already running"; return; fi
+  rm -f "$STATE/socket"
+  # cage exits when its child exits, so the child just records the socket
+  # name and sleeps; apps are launched separately against that socket.
+  env -u DISPLAY -u WAYLAND_DISPLAY \
+    WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 \
+    cage -- sh -c 'echo "$WAYLAND_DISPLAY" >"$0"; exec sleep infinity' "$STATE/socket" \
+    >"$STATE/cage.log" 2>&1 &
+  echo $! >"$STATE/cage.pid"
+  for _ in $(seq 50); do
+    [[ -s "$STATE/socket" ]] && break
+    is_running "$STATE/cage.pid" || break
+    sleep 0.1
+  done
+  if [[ ! -s "$STATE/socket" ]]; then
+    echo "cage failed to start:" >&2
+    cat "$STATE/cage.log" >&2
+    exit 1
+  fi
+  if ! command -v wayvnc >/dev/null; then
+    echo "up: wayland=$(socket) (wayvnc not installed: no VNC, no key/click input)"
+    return
+  fi
+  WAYLAND_DISPLAY="$(socket)" wayvnc 127.0.0.1 "$PORT" >"$STATE/wayvnc.log" 2>&1 &
+  echo $! >"$STATE/wayvnc.pid"
+  sleep 0.5
+  if ! is_running "$STATE/wayvnc.pid"; then
+    echo "wayvnc failed to start:" >&2
+    cat "$STATE/wayvnc.log" >&2
+    exit 1
+  fi
+  echo "up: wayland=$(socket) vnc://127.0.0.1:$PORT"
+}
+
+cmd_run() {
+  is_running "$STATE/cage.pid" || cmd_up
+  (cd "$ROOT" && cargo build --quiet)
+  if is_running "$STATE/app.pid"; then kill "$(cat "$STATE/app.pid")"; sleep 0.3; fi
+  local icd
+  icd="$(lavapipe_icd || true)"
+  env -u DISPLAY WAYLAND_DISPLAY="$(socket)" \
+    ${icd:+VK_ICD_FILENAMES="$icd"} \
+    "$ROOT/target/debug/tickdrift" >"$STATE/app.log" 2>&1 &
+  echo $! >"$STATE/app.pid"
+  sleep "${UI_STARTUP_WAIT:-1.5}"
+  if ! is_running "$STATE/app.pid"; then
+    echo "app exited:" >&2
+    cat "$STATE/app.log" >&2
+    exit 1
+  fi
+  echo "app running (pid $(cat "$STATE/app.pid"))"
+}
+
+cmd_shot() {
+  local out="$SHOTS/${1:-shot}.png"
+  WAYLAND_DISPLAY="$(socket)" grim "$out"
+  echo "$out"
+}
+
+cmd_key() { local k args=(); for k in "$@"; do args+=(key "$k" pause 0.15); done; vncdo_ "${args[@]}"; }
+cmd_type() { vncdo_ type "$*"; }
+cmd_click() { vncdo_ move "$1" "$2" pause 0.1 click 1; }
+
+cmd_logs() {
+  echo "== app ==";    cat "$STATE/app.log" 2>/dev/null || true
+  echo "== cage ==";   tail -n 30 "$STATE/cage.log" 2>/dev/null || true
+  echo "== wayvnc =="; tail -n 30 "$STATE/wayvnc.log" 2>/dev/null || true
+}
+
+cmd_down() {
+  local p
+  for p in app wayvnc cage; do
+    if is_running "$STATE/$p.pid"; then kill "$(cat "$STATE/$p.pid")"; fi
+    rm -f "$STATE/$p.pid"
+  done
+  echo "stopped"
+}
+
+sub="${1:-}"; shift || true
+case "$sub" in
+  up|run|shot|key|type|click|logs|down) "cmd_$sub" "$@" ;;
+  *) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac
