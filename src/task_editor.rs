@@ -1,6 +1,7 @@
 use self::actions::{MoveEditDown, MoveEditUp, OpenDatePicker, SaveEdit, StopEditing};
 use crate::date_picker::{DatePicker, DatePickerEvent, date_label};
 use chrono::NaiveDate;
+use gpui::prelude::FluentBuilder;
 use gpui::{
     App, AppContext, Context, Entity, EventEmitter, FocusHandle, Focusable, InteractiveElement,
     KeyBinding, ParentElement, Render, SharedString, Styled, Window, div, rems,
@@ -45,6 +46,8 @@ pub struct TaskEditor {
     pub date: Option<NaiveDate>,
     pub date_picker: Entity<DatePicker>,
     pub date_popover_open: bool,
+    /// Hidden on the task page, whose sidebar has its own date row.
+    show_date_button: bool,
     previous_focus: Option<FocusHandle>,
     focus_handle: FocusHandle,
     _subscriptions: Vec<gpui::Subscription>,
@@ -152,12 +155,18 @@ impl TaskEditor {
             date,
             date_picker,
             date_popover_open: false,
+            show_date_button: true,
             previous_focus: None,
             focus_handle,
             _subscriptions,
         };
         editor.set_values(title, description, date, window, cx);
         editor
+    }
+
+    pub fn without_date_button(mut self) -> Self {
+        self.show_date_button = false;
+        self
     }
 
     pub fn set_values(
@@ -253,41 +262,43 @@ impl Render for TaskEditor {
                     .child(Input::new(&self.task_desc_input).appearance(false))
                     .key_context("TaskDescriptionField"),
             )
-            .child(
-                h_flex().px(rems(0.75)).pb(rems(0.5)).gap(rems(0.5)).child(
-                    div()
-                        .key_context("TaskEditorDateButton")
-                        .on_action(cx.listener(|this, _: &OpenDatePicker, window, cx| {
-                            this.previous_focus = window.focused(cx);
-                            this.open_date_picker(window, cx);
-                        }))
-                        .child(
-                            Popover::new("date-popover")
-                                .open(date_popover_open)
-                                .on_open_change(move |open, window, cx| {
-                                    editor.update(cx, |editor, cx| {
-                                        if *open {
-                                            // Opened by mouse: nothing to return focus to.
-                                            editor.previous_focus = None;
-                                            editor.open_date_picker(window, cx);
-                                        } else {
-                                            editor.close_date_picker(window, cx);
-                                        }
-                                    });
-                                })
-                                .track_focus(&picker_focus)
-                                .appearance(false)
-                                .trigger(
-                                    Button::new("date-btn")
-                                        .outline()
-                                        .small()
-                                        .icon(IconName::Calendar)
-                                        .label(self.date_label()),
-                                )
-                                .content(move |_, _, _| picker.clone()),
-                        ),
-                ),
-            )
+            .when(self.show_date_button, |el| {
+                el.child(
+                    h_flex().px(rems(0.75)).pb(rems(0.5)).gap(rems(0.5)).child(
+                        div()
+                            .key_context("TaskEditorDateButton")
+                            .on_action(cx.listener(|this, _: &OpenDatePicker, window, cx| {
+                                this.previous_focus = window.focused(cx);
+                                this.open_date_picker(window, cx);
+                            }))
+                            .child(
+                                Popover::new("date-popover")
+                                    .open(date_popover_open)
+                                    .on_open_change(move |open, window, cx| {
+                                        editor.update(cx, |editor, cx| {
+                                            if *open {
+                                                // Opened by mouse: nothing to return focus to.
+                                                editor.previous_focus = None;
+                                                editor.open_date_picker(window, cx);
+                                            } else {
+                                                editor.close_date_picker(window, cx);
+                                            }
+                                        });
+                                    })
+                                    .track_focus(&picker_focus)
+                                    .appearance(false)
+                                    .trigger(
+                                        Button::new("date-btn")
+                                            .outline()
+                                            .small()
+                                            .icon(IconName::Calendar)
+                                            .label(self.date_label()),
+                                    )
+                                    .content(move |_, _, _| picker.clone()),
+                            ),
+                    ),
+                )
+            })
             .child(Divider::horizontal().color(border_color))
             .child(
                 h_flex()

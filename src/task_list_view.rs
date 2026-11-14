@@ -1,8 +1,10 @@
 use crate::date_picker::{DatePicker, DatePickerEvent};
 use crate::task::{Priority, Task};
+use crate::task_detail::{TaskDetail, TaskDetailEvent};
 use crate::task_editor::{TaskEditor, TaskEditorEvent};
 use crate::task_list_view::actions::{
-    MoveDown, MoveUp, RemoveDate, SetDate, SetP1, SetP2, SetP3, SetP4, StartEditing, ToggleComplete,
+    MoveDown, MoveUp, OpenTask, RemoveDate, SetDate, SetP1, SetP2, SetP3, SetP4, StartEditing,
+    ToggleComplete,
 };
 use gpui::prelude::FluentBuilder;
 use gpui::{
@@ -26,6 +28,7 @@ pub mod actions {
             StartEditing,
             SetDate,
             RemoveDate,
+            OpenTask,
         ]
     );
 }
@@ -40,9 +43,12 @@ pub struct TaskList {
     /// Date picker opened with `t` on the selected task.
     pub date_picker: Entity<DatePicker>,
     pub date_popover_open: bool,
+    /// The task page (Todoist's task modal), open for `selected_index`.
+    pub task_detail: Option<Entity<TaskDetail>>,
     focus_handle: FocusHandle,
     _subscriptions: Vec<gpui::Subscription>,
     _editor_subscription: Option<gpui::Subscription>,
+    _detail_subscription: Option<gpui::Subscription>,
 }
 
 impl Focusable for TaskList {
@@ -68,6 +74,7 @@ impl TaskList {
             gpui::KeyBinding::new("ctrl-e", StartEditing, Some("TaskList && !editing")),
             gpui::KeyBinding::new("t", SetDate, Some("TaskList && !editing")),
             gpui::KeyBinding::new("shift-t", RemoveDate, Some("TaskList && !editing")),
+            gpui::KeyBinding::new("enter", OpenTask, Some("TaskList && !editing")),
         ]);
 
         let today = chrono::Local::now().date_naive();
@@ -92,9 +99,11 @@ impl TaskList {
             task_editor: None,
             date_picker,
             date_popover_open: false,
+            task_detail: None,
             focus_handle,
             _subscriptions: vec![picker_subscription],
             _editor_subscription: None,
+            _detail_subscription: None,
         }
     }
 
@@ -189,6 +198,56 @@ impl TaskList {
         self.open_edit_at(self.selected_index, window, cx);
     }
 
+    // ── Task page ────────────────────────────────────────────────────────────
+
+    pub fn open_task(&mut self, _: &OpenTask, window: &mut Window, cx: &mut Context<Self>) {
+        self.open_task_at(self.selected_index, window, cx);
+    }
+
+    /// Select the task at `index` and show it on the task page.
+    pub fn open_task_at(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(task) = self.tasks.get(index).cloned() else {
+            return;
+        };
+        if self.is_editing {
+            self.close_edit(window, cx);
+        }
+        self.selected_index = index;
+        let detail = cx.new(|cx| TaskDetail::new(task, window, cx));
+        self._detail_subscription = Some(cx.subscribe_in(
+            &detail,
+            window,
+            |this, detail, event, window, cx| match event {
+                TaskDetailEvent::Changed(task) => {
+                    if let Some(slot) = this.tasks.get_mut(this.selected_index) {
+                        *slot = task.clone();
+                    }
+                    cx.notify();
+                }
+                TaskDetailEvent::Close => this.close_task(window, cx),
+                TaskDetailEvent::Prev | TaskDetailEvent::Next => {
+                    let index = match event {
+                        TaskDetailEvent::Prev => this.selected_index.saturating_sub(1),
+                        _ => (this.selected_index + 1).min(this.tasks.len() - 1),
+                    };
+                    this.selected_index = index;
+                    let task = this.tasks[index].clone();
+                    detail.update(cx, |detail, cx| detail.set_task(task, window, cx));
+                    cx.notify();
+                }
+            },
+        ));
+        self.task_detail = Some(detail);
+        cx.notify();
+    }
+
+    pub fn close_task(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.task_detail = None;
+        self._detail_subscription = None;
+        window.focus(&self.focus_handle, cx);
+        cx.notify();
+    }
+
     // ── Internal helpers ──────────────────────────────────────────────────────
 
     fn open_edit_at(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
@@ -269,40 +328,17 @@ impl TaskList {
                     .flex()
                     .items_start()
                     .child(
-                        div()
-                            .flex_none()
-                            .w(rems(1.125))
-                            .h(rems(1.125))
+                        completion_circle(task, cx)
                             .mt(rems(0.0625))
                             .mr(rems(0.75))
-                            .rounded_full()
-                            .border_1()
-                            .when(task.priority != Priority::P4, |this| this.border_2())
-                            .cursor_pointer()
-                            .border_color(circle_color(cx, &task))
-                            .when(task.completed, |this| this.bg(circle_color(cx, &task)))
-                            .flex()
-                            .items_center()
-                            .justify_center()
                             .on_mouse_down(
                                 MouseButton::Left,
                                 cx.listener(|this, _, window, cx| {
+                                    // Toggle only; don't open the task page.
+                                    cx.stop_propagation();
                                     this.toggle_complete(&ToggleComplete, window, cx)
                                 }),
-                            )
-                            .child(if task.completed {
-                                div()
-                                    .text_size(rems(0.6875))
-                                    .line_height(relative(1.0))
-                                    .text_color(cx.theme().background)
-                                    .child("✓")
-                            } else {
-                                div()
-                                    .w(rems(0.9375))
-                                    .h(rems(0.9375))
-                                    .rounded_full()
-                                    .bg(cx.theme().background)
-                            }),
+                            ),
                     )
                     .child(
                         div()
@@ -388,7 +424,7 @@ impl Render for TaskList {
         let is_editing = self.is_editing;
 
         // While the date picker is open, list shortcuts must not fire either.
-        let key_ctx = if self.is_editing || self.date_popover_open {
+        let key_ctx = if self.is_editing || self.date_popover_open || self.task_detail.is_some() {
             "TaskList editing"
         } else {
             "TaskList"
@@ -407,6 +443,7 @@ impl Render for TaskList {
             .on_action(cx.listener(TaskList::start_editing))
             .on_action(cx.listener(TaskList::set_date))
             .on_action(cx.listener(TaskList::remove_date))
+            .on_action(cx.listener(TaskList::open_task))
             .flex()
             .flex_col()
             .children(self.tasks.iter().enumerate().map(|(i, task)| {
@@ -433,10 +470,21 @@ impl Render for TaskList {
                         }
                     } else {
                         self.task_row(task, is_selected, cx)
+                            .cursor_pointer()
+                            .on_mouse_down(
+                                MouseButton::Left,
+                                cx.listener(move |this, _, window, cx| {
+                                    this.open_task_at(i, window, cx)
+                                }),
+                            )
                     })
                     .when(is_selected && self.date_popover_open, |el| {
                         el.child(self.render_date_popover(cx))
                     })
+                    .when_some(
+                        self.task_detail.clone().filter(|_| is_selected),
+                        |el, detail| el.child(detail),
+                    )
                 // .when(is_row_editing, |_this| self.editor(task, window, cx))
                 // .when(!is_row_editing, |_this| {
                 //     self.task_row(task, is_selected, cx)
@@ -460,8 +508,39 @@ impl Render for TaskList {
 //     p.to_string()
 // }
 
-fn circle_color(cx: &Context<'_, TaskList>, todo: &Task) -> gpui::Hsla {
-    match todo.priority {
+/// The round checkbox of a task: priority-colored ring, filled with a ✓ when completed.
+pub(crate) fn completion_circle(task: &Task, cx: &App) -> gpui::Div {
+    let color = priority_color(task.priority, cx);
+    div()
+        .flex_none()
+        .w(rems(1.125))
+        .h(rems(1.125))
+        .rounded_full()
+        .border_1()
+        .when(task.priority != Priority::P4, |this| this.border_2())
+        .cursor_pointer()
+        .border_color(color)
+        .when(task.completed, |this| this.bg(color))
+        .flex()
+        .items_center()
+        .justify_center()
+        .child(if task.completed {
+            div()
+                .text_size(rems(0.6875))
+                .line_height(relative(1.0))
+                .text_color(cx.theme().background)
+                .child("✓")
+        } else {
+            div()
+                .w(rems(0.9375))
+                .h(rems(0.9375))
+                .rounded_full()
+                .bg(cx.theme().background)
+        })
+}
+
+pub(crate) fn priority_color(priority: Priority, cx: &App) -> gpui::Hsla {
+    match priority {
         Priority::P1 => cx.theme().danger,
         Priority::P2 => cx.theme().warning,
         Priority::P3 => cx.theme().info,

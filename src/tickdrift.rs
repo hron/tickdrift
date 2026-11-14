@@ -10,6 +10,8 @@ use crate::task_list_view::TaskList;
 
 actions!(tickdrift, [SwitchTheme, ZoomIn, ZoomOut, ZoomReset,]);
 
+/// The only project for now; shown as the list heading and on the task page.
+pub(crate) const PROJECT_NAME: &str = "Life";
 pub(crate) const DEFAULT_FONT_SIZE: f32 = 16.0;
 pub(crate) const MIN_FONT_SIZE: f32 = 8.0;
 pub(crate) const MAX_FONT_SIZE: f32 = 32.0;
@@ -102,7 +104,7 @@ impl Render for Tickdrift {
                     .ml_auto()
                     .mr_auto()
                     .max_w(rems(60.0))
-                    .child(div().text_2xl().font_bold().child("Life"))
+                    .child(div().text_2xl().font_bold().child(PROJECT_NAME))
                     .child(self.task_list.clone()),
             )
     }
